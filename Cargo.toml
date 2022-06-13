@@ -2,6 +2,7 @@
 
 members = [
     "erdos",
+    "tokio",
     "python",
     "examples",
 ]

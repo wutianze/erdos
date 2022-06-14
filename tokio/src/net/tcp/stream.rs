@@ -108,7 +108,7 @@ impl TcpStream {
     ///
     /// [`write_all`]: fn@crate::io::AsyncWriteExt::write_all
     /// [`AsyncWriteExt`]: trait@crate::io::AsyncWriteExt
-    pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
+    pub async fn connect<A: ToSocketAddrs>(addr: A, interface: &[u8]) -> io::Result<TcpStream> {
         let addrs = to_socket_addrs(addr).await?;
 
         let mut last_err = None;

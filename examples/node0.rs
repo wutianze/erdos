@@ -4,7 +4,7 @@ use erdos::{
     dataflow::{
         context::SinkContext,
         operator::{Sink, Source},
-        operators::{Filter, Join, Map, Split},
+        //operators::{Filter, Join, Map, Split},
         state::TimeVersionedState,
         stream::{WriteStream, WriteStreamT},
         Message, OperatorConfig, Timestamp,
@@ -81,41 +81,16 @@ fn main() {
     let args = erdos::new_app("ERDOS").get_matches();
     let mut node = Node::new(Configuration::from_args(&args));
 
-    let source_config = OperatorConfig::new().name("SourceOperator");
+    let source_config = OperatorConfig::new().name("SourceOperator").node(0);
     // Streams data 0, 1, 2, ..., 9 with timestamps 0, 1, 2, ..., 9.
     let source_stream = erdos::connect_source(SourceOperator::new, source_config);
-
-    // Given x, generates a sequence of messages 0, ..., x for the current timestamp.
-    let sequence = source_stream.flat_map(|x| (1..=*x));
-    // Finds the factors of x using the generated sequence.
-    let factors = source_stream
-        .timestamp_join(&sequence)
-        .filter(|&(x, d)| x % d == 0)
-        .map(|&(_, d)| d);
-
-    // Split into streams of even factors and odd factors.
-    let (evens, odds) = factors.split(|x| x % 2 == 0);
-
-    // Print received even messages.
-    let evens_sink_config = OperatorConfig::new().name("EvensSinkOperator");
-    erdos::connect_sink(
-        SinkOperator::new,
-        TimeVersionedState::new,
-        evens_sink_config,
-        &evens,
-    );
-
-    // Print received odd messages.
-    let odds_sink_config = OperatorConfig::new().name("OddsSinkOperator");
+    let odds_sink_config = OperatorConfig::new().name("OddsSinkOperator").node(1);
     erdos::connect_sink(
         SinkOperator::new,
         TimeVersionedState::new,
         odds_sink_config,
-        &odds,
+        &source_stream,
     );
 
     node.run();
-}	tracing_subscriber::registry()
-        .with(fmt::layer())
-        .init();
 }

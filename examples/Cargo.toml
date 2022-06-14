@@ -35,5 +35,9 @@ name = "linq"
 path = "linq.rs"
 
 [[example]]
-name = "nodes"
-path = "nodes.rs"
+name = "node0"
+path = "node0.rs"
+
+[[example]]
+name = "node1"
+path = "node1.rs"

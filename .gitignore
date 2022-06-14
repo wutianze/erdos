@@ -36,3 +36,6 @@ venv.bak/
 # Generated documentation files
 /python/doc/build
 /python/doc/source/_build
+
+# VSCODE
+.history/

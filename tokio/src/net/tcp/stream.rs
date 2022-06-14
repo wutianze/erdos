@@ -1125,6 +1125,28 @@ impl TcpStream {
         socket2::SockRef::from(self).set_linger(dur)
     }
 
+    /// Bind to a specific NIC for this socket by setting the SO_BINDTODEVICE option.
+    ///
+    /// If a socket is bound to an interface, only packets received from that particular interface
+    /// are processed by the socket. Note that this only works for some socket types, particularly
+    /// AF_INET sockets.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use tokio::net::TcpStream;
+    ///
+    /// # async fn dox() -> Result<(), Box<dyn std::error::Error>> {
+    /// let stream = TcpStream::connect("127.0.0.1:8080").await?;
+    ///
+    /// stream.bind_device("eth0")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn bind_device(&self, interface: &[u8]) -> io::Result<()> {
+        socket2::SockRef::from(self).bind_device(Some(interface))
+    }
+
     /// Gets the value of the `IP_TTL` option for this socket.
     ///
     /// For more information about this option, see [`set_ttl`].

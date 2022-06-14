@@ -2,6 +2,8 @@ extern crate erdos;
 
 use std::{thread, time::Duration};
 
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
 use erdos::dataflow::context::*;
 use erdos::dataflow::deadlines::*;
 use erdos::dataflow::operator::*;
@@ -245,6 +247,9 @@ impl OneInTwoOut<(), usize, usize, usize> for EvenOddOperator {
 fn main() {
     //let mut s = TimestampDeadline::new().with_start_condition(45);
     //println!("The s value is {}", s.s);
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .init();
     let args = erdos::new_app("ERDOS").get_matches();
     let mut node = Node::new(Configuration::from_args(&args));
 

@@ -81,12 +81,29 @@ impl TcpStream {
     ///
     /// [write interest]: Interest::WRITABLE
     #[cfg(not(target_os = "wasi"))]
-    pub fn connect(addr: SocketAddr) -> io::Result<TcpStream> {
+    pub fn connect(addr: SocketAddr, interface: &[u8]) -> io::Result<TcpStream> {
         let socket = new_for_addr(addr)?;
         #[cfg(unix)]
         let stream = unsafe { TcpStream::from_raw_fd(socket) };
         #[cfg(windows)]
         let stream = unsafe { TcpStream::from_raw_socket(socket as _) };
+        
+        let (value, len) = if let Some(interface) = interface {
+            (interface.as_ptr(), interface.len())
+        } else {
+            (ptr::null(), 0)
+        };
+        syscall!(setsockopt(
+            self.as_raw(),
+            libc::SOL_SOCKET,
+            libc::SO_BINDTODEVICE,
+            value.cast(),
+            len as libc::socklen_t,
+        )).map(|index| {
+            print!("bind_device returns: {}",index);
+            ()
+        })
+        stream.inner.
         //stream.set_nodelay(true);TODO
         connect(&stream.inner, addr)?;
         Ok(stream)

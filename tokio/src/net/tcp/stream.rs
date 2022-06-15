@@ -114,7 +114,7 @@ impl TcpStream {
         let mut last_err = None;
 
         for addr in addrs {
-            match TcpStream::connect_addr(addr).await {
+            match TcpStream::connect_addr(addr,interface).await {
                 Ok(stream) => return Ok(stream),
                 Err(e) => last_err = Some(e),
             }
@@ -129,8 +129,8 @@ impl TcpStream {
     }
 
     /// Establishes a connection to the specified `addr`.
-    async fn connect_addr(addr: SocketAddr) -> io::Result<TcpStream> {
-        let sys = mio::net::TcpStream::connect(addr)?;
+    async fn connect_addr(addr: SocketAddr, interface: &[u8]) -> io::Result<TcpStream> {
+        let sys = mio::net::TcpStream::connect(addr,interface)?;
         TcpStream::connect_mio(sys).await
     }
 

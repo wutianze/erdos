@@ -87,7 +87,7 @@ impl TcpStream {
         let stream = unsafe { TcpStream::from_raw_fd(socket) };
         #[cfg(windows)]
         let stream = unsafe { TcpStream::from_raw_socket(socket as _) };
-        stream.set_nodelay(true);TODO
+        //stream.set_nodelay(true);TODO
         connect(&stream.inner, addr)?;
         Ok(stream)
     }
@@ -159,9 +159,9 @@ impl TcpStream {
     /// On Windows make sure the stream is connected before calling this method,
     /// by receiving an (writable) event. Trying to set `nodelay` on an
     /// unconnected `TcpStream` is unspecified behavior.
-    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
-        self.inner.b
-    }
+    //pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+    //    self.inner.b
+    //}
 
 
     /// Gets the value of the `TCP_NODELAY` option on this socket.

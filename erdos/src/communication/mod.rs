@@ -154,7 +154,7 @@ async fn connect_to_node(
             Ok(mut stream) => {
                 stream.set_nodelay(true).expect("couldn't disable Nagle");
                 tracing::info!("start bind device");
-                //stream.bind_device(b"enp3s0").expect("couldn't bind to device");
+                stream.bind_device(b"enp3s0").expect("couldn't bind to device");
                 // Send the node id so that the TCP server knows with which
                 // node the connection was established.
                 let mut buffer: Vec<u8> = Vec::new();

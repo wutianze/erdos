@@ -81,10 +81,10 @@ fn main() {
     let args = erdos::new_app("ERDOS").get_matches();
     let mut node = Node::new(Configuration::from_args(&args));
 
-    let source_config = OperatorConfig::new().name("SourceOperator").node(0);
+    let source_config = OperatorConfig::new().name("SourceOperator").node(1);
     // Streams data 0, 1, 2, ..., 9 with timestamps 0, 1, 2, ..., 9.
     let source_stream = erdos::connect_source(SourceOperator::new, source_config);
-    let odds_sink_config = OperatorConfig::new().name("OddsSinkOperator").node(1);
+    let odds_sink_config = OperatorConfig::new().name("OddsSinkOperator").node(0);
     erdos::connect_sink(
         SinkOperator::new,
         TimeVersionedState::new,

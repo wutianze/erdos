@@ -14,6 +14,24 @@ pub(crate) fn new_for_addr(address: SocketAddr) -> io::Result<libc::c_int> {
     new_socket(domain, libc::SOCK_STREAM)
 }
 
+pub(crate) fn bind_device(socket: &net::TcpStream, interface: Option<&[u8]>) -> io::Result<()>{
+    let (value, len) = if let Some(interface) = interface {
+        (interface.as_ptr(), interface.len())
+    } else {
+        (std::ptr::null(), 0)
+    };
+    match syscall!(setsockopt(
+        socket.as_raw_fd(),
+        libc::SOL_SOCKET,
+        libc::SO_BINDTODEVICE,
+        value.cast(),
+        len as libc::socklen_t,
+    )) {
+        Err(err) if err.raw_os_error() != Some(libc::EINPROGRESS) => Err(err),
+        _ => Ok(()),
+    }
+}
+
 pub(crate) fn bind(socket: &net::TcpListener, addr: SocketAddr) -> io::Result<()> {
     let (raw_addr, raw_addr_length) = socket_addr(&addr);
     syscall!(bind(socket.as_raw_fd(), raw_addr.as_ptr(), raw_addr_length))?;

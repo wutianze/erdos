@@ -81,7 +81,7 @@ impl TcpStream {
     ///
     /// [write interest]: Interest::WRITABLE
     #[cfg(not(target_os = "wasi"))]
-    pub fn connect(addr: SocketAddr, interface: &[u8]) -> io::Result<TcpStream> {
+    pub fn connect(addr: SocketAddr, interface: Option<&[u8]>) -> io::Result<TcpStream> {
         use crate::sys::tcp::bind_device;
 
         let socket = new_for_addr(addr)?;
@@ -90,7 +90,7 @@ impl TcpStream {
         #[cfg(windows)]
         let stream = unsafe { TcpStream::from_raw_socket(socket as _) };
         
-        bind_device(&stream.inner, Some(interface))?;
+        bind_device(&stream.inner, interface)?;
         connect(&stream.inner, addr)?;
         Ok(stream)
     }

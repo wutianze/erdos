@@ -150,13 +150,10 @@ async fn connect_to_node(
     // Keeps on reatying to connect to `dst_addr` until it succeeds.
     let mut last_err_msg_time = Instant::now();
     loop {
-        match TcpStream::connect(dst_addr, b"enp3s0").await {
+        match TcpStream::connect(dst_addr,None).await {
             Ok(mut stream) => {
                 stream.set_nodelay(true).expect("couldn't disable Nagle");
                 tracing::info!("start bind device");
-                //stream.bind_device(b"enp3s0").expect("couldn't bind to device");
-                // Send the node id so that the TCP server knows with which
-                // node the connection was established.
                 let mut buffer: Vec<u8> = Vec::new();
                 WriteBytesExt::write_u32::<NetworkEndian>(&mut buffer, node_id as u32)?;
                 loop {
@@ -206,8 +203,6 @@ async fn await_node_connections(
     for _ in 0..expected_conns {
         let (stream, _) = listener.accept().await?;
         stream.set_nodelay(true).expect("couldn't disable Nagle");
-        //tracing::info!("start bind device");
-        //stream.bind_device(b"enp3s0").expect("couldn't bind to device");
         // Launch a task that reads the node id from the TCP stream.
         await_futures.push(read_node_id(stream));
     }

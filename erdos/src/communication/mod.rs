@@ -95,10 +95,11 @@ impl InterProcessMessage {
 pub async fn create_tcp_streams(
     node_addrs: Vec<SocketAddr>,
     node_id: NodeId,
+    node_devices: Vec<&[u8]>,
 ) -> Vec<(NodeId, TcpStream)> {
     let node_addr = node_addrs[node_id];
     // Connect to the nodes that have a lower id than the node.
-    let connect_streams_fut = connect_to_nodes(node_addrs[..node_id].to_vec(), node_id);
+    let connect_streams_fut = connect_to_nodes(node_addrs[..node_id].to_vec(), node_id,node_devices[..node_id].to_vec());
     // Wait for connections from the nodes that have a higher id than the node.
     let stream_fut = await_node_connections(node_addr, node_addrs.len() - node_id - 1);
     // Wait until all connections are established.

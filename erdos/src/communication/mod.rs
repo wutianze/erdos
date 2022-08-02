@@ -11,7 +11,7 @@ use futures::future;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpStream, tcp},
     time::sleep,
 };
 
@@ -93,13 +93,14 @@ impl InterProcessMessage {
 /// The function creates a TCPStream to each node address. The node address vector stores
 /// the network address of each node, and is indexed by node id.
 pub async fn create_tcp_streams(
-    node_addrs: Vec<SocketAddr>,
+    node_addrs: Vec<(SocketAddr,SocketAddr)>,
     node_id: NodeId,
-    node_devices: Vec<&[u8]>,
-) -> Vec<(NodeId, TcpStream)> {
+    node_devices: (&[u8],&[u8]),//only the devices of this node is needed, they are used to connect to other nodes' two addresses
+    natures: InterfaceNature,
+) -> Vec<(NodeId, TcpStream, TcpStream)> {
     let node_addr = node_addrs[node_id];
     // Connect to the nodes that have a lower id than the node.
-    let connect_streams_fut = connect_to_nodes(node_addrs[..node_id].to_vec(), node_id,node_devices[..node_id].to_vec());
+    let connect_streams_fut = connect_to_nodes(node_addrs[..node_id].to_vec(), node_id,node_devices,natures);
     // Wait for connections from the nodes that have a higher id than the node.
     let stream_fut = await_node_connections(node_addr, node_addrs.len() - node_id - 1);
     // Wait until all connections are established.
@@ -127,17 +128,26 @@ pub async fn create_tcp_streams(
 ///
 /// The function returns a vector of `(NodeId, TcpStream)` for each connection.
 async fn connect_to_nodes(
-    addrs: Vec<SocketAddr>,
+    addrs: Vec<(SocketAddr,SocketAddr)>,
     node_id: NodeId,
-) -> Result<Vec<(NodeId, TcpStream)>, std::io::Error> {
+    node_devices: (&[u8],&[u8]),
+    natures: (InterfaceNature, InterfaceNature),
+) -> Result<Vec<(NodeId, TcpStream,TcpStream)>, std::io::Error> {
     let mut connect_futures = Vec::new();
     // For each node address, launch a task that tries to create a TCP stream to the node.
+    // Now, each node tries to create two TCP streams using different NICs. Now, two addresses are needed. (test feature)
     for addr in addrs.iter() {
-        connect_futures.push(connect_to_node(addr, node_id));
+        connect_futures.push(connect_to_node(&addr.0, node_id, node_devices.0, natures.0));
+        connect_futures.push(connect_to_node(&addr.1, node_id, node_devices.1, natures.1));
     }
     // Wait for all tasks to complete successfully.
     let tcp_results = future::try_join_all(connect_futures).await?;
-    let streams: Vec<(NodeId, TcpStream)> = (0..tcp_results.len()).zip(tcp_results).collect();
+    let mut streams = Vec::new();
+    let mut j = 0;
+    for i in 0..=tcp_results.len()*2{
+        streams.push((i,tcp_results[j],tcp_results[j+1]));
+        j = j+2
+    }
     Ok(streams)
 }
 
@@ -147,11 +157,13 @@ async fn connect_to_nodes(
 async fn connect_to_node(
     dst_addr: &SocketAddr,
     node_id: NodeId,
+    node_device: &[u8],
+    nature: InterfaceNature,
 ) -> Result<TcpStream, std::io::Error> {
     // Keeps on reatying to connect to `dst_addr` until it succeeds.
     let mut last_err_msg_time = Instant::now();
     loop {
-        match TcpStream::connect(dst_addr,None).await {
+        match TcpStream::connect(dst_addr,Some(node_device), nature).await {
             Ok(mut stream) => {
                 stream.set_nodelay(true).expect("couldn't disable Nagle");
                 tracing::info!("start bind device");
@@ -195,17 +207,21 @@ async fn connect_to_node(
 /// Upon a new connection, the function reads from the stream the id of the node that initiated
 /// the connection.
 async fn await_node_connections(
-    addr: SocketAddr,
+    addr: (SocketAddr, SocketAddr),
     expected_conns: usize,
-) -> Result<Vec<(NodeId, TcpStream)>, std::io::Error> {
+) -> Result<Vec<(NodeId, TcpStream,TcpStream)>, std::io::Error> {
     let mut await_futures = Vec::new();
-    let listener = TcpListener::bind(&addr).await?;
+    let listener0 = TcpListener::bind(&addr.0).await?;
+    let listener1 = TcpListener::bind(&addr.1).await?;
     // Awaiting for `expected_conns` conections.
-    for _ in 0..expected_conns {
-        let (stream, _) = listener.accept().await?;
-        stream.set_nodelay(true).expect("couldn't disable Nagle");
+    for _ in 0..expected_conns {//because we have two connections for each node
+        let (stream0, _) = listener0.accept().await?;
+        stream0.set_nodelay(true).expect("couldn't disable Nagle");
         // Launch a task that reads the node id from the TCP stream.
-        await_futures.push(read_node_id(stream));
+        let (stream1, _) = listener1.accept().await?;
+        stream1.set_nodelay(true).expect("couldn't disable Nagle");
+        // Launch a task that reads the node id from the TCP stream.
+        await_futures.push(read_node_id(stream0, stream1));
     }
     // Await until we've received `expected_conns` node ids.
     future::try_join_all(await_futures).await
@@ -214,15 +230,28 @@ async fn await_node_connections(
 /// Reads a node id from a TCP stream.
 ///
 /// The method is used to discover the id of the node that initiated the connection.
-async fn read_node_id(mut stream: TcpStream) -> Result<(NodeId, TcpStream), std::io::Error> {
+async fn read_node_id(mut stream0: TcpStream, stream1: TcpStream) -> Result<(NodeId, TcpStream, TcpStream), std::io::Error> {
     let mut buffer = [0u8; 4];
-    match stream.read_exact(&mut buffer).await {
+    match stream0.read_exact(&mut buffer).await {
         Ok(n) => n,
         Err(e) => {
             tracing::error!("failed to read from socket; err = {:?}", e);
             return Err(e);
         }
     };
-    let node_id: u32 = NetworkEndian::read_u32(&buffer);
-    Ok((node_id as NodeId, stream))
+    let node_id0: u32 = NetworkEndian::read_u32(&buffer);
+    let mut buffer = [0u8; 4];
+    match stream1.read_exact(&mut buffer).await {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::error!("failed to read from socket; err = {:?}", e);
+            return Err(e);
+        }
+    };
+    let node_id1: u32 = NetworkEndian::read_u32(&buffer);
+    if node_id0 != node_id1{
+        tracing::error!("received different NodeId from the same Node;");
+        return Err;
+    }
+    Ok((node_id0 as NodeId, stream0,stream1))
 }

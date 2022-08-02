@@ -66,6 +66,15 @@ cfg_net! {
     /// [`shutdown()`]: fn@crate::io::AsyncWriteExt::shutdown
     pub struct TcpStream {
         io: PollEvented<mio::net::TcpStream>,
+        nature: InterfaceNature, //delay bandwidth reliability security
+    }
+
+    #[derive(Copy, Clone)]
+    struct InterfaceNature{
+        delay: u8,
+        bandwidth: u8,
+        reliability: u8,
+        security: u8,
     }
 }
 
@@ -108,13 +117,13 @@ impl TcpStream {
     ///
     /// [`write_all`]: fn@crate::io::AsyncWriteExt::write_all
     /// [`AsyncWriteExt`]: trait@crate::io::AsyncWriteExt
-    pub async fn connect<A: ToSocketAddrs>(addr: A, interface: Option<&[u8]>) -> io::Result<TcpStream> {
+    pub async fn connect<A: ToSocketAddrs>(addr: A, interface: Option<&[u8]>, nature:InterfaceNature) -> io::Result<TcpStream> {
         let addrs = to_socket_addrs(addr).await?;
 
         let mut last_err = None;
 
         for addr in addrs {
-            match TcpStream::connect_addr(addr,interface).await {
+            match TcpStream::connect_addr(addr,interface,nature).await {
                 Ok(stream) => return Ok(stream),
                 Err(e) => last_err = Some(e),
             }
@@ -129,13 +138,13 @@ impl TcpStream {
     }
 
     /// Establishes a connection to the specified `addr`.
-    async fn connect_addr(addr: SocketAddr, interface: Option<&[u8]>) -> io::Result<TcpStream> {
+    async fn connect_addr(addr: SocketAddr, interface: Option<&[u8]>, nature:InterfaceNature) -> io::Result<TcpStream> {
         let sys = mio::net::TcpStream::connect(addr,interface)?;
-        TcpStream::connect_mio(sys).await
+        TcpStream::connect_mio(sys,nature).await
     }
 
-    pub(crate) async fn connect_mio(sys: mio::net::TcpStream) -> io::Result<TcpStream> {
-        let stream = TcpStream::new(sys)?;
+    pub(crate) async fn connect_mio(sys: mio::net::TcpStream, nature: InterfaceNature) -> io::Result<TcpStream> {
+        let stream = TcpStream::new(sys, nature)?;
 
         // Once we've connected, wait for the stream to be writable as
         // that's when the actual connection has been initiated. Once we're
@@ -152,9 +161,9 @@ impl TcpStream {
         Ok(stream)
     }
 
-    pub(crate) fn new(connected: mio::net::TcpStream) -> io::Result<TcpStream> {
+    pub(crate) fn new(connected: mio::net::TcpStream, nature:InterfaceNature) -> io::Result<TcpStream> {
         let io = PollEvented::new(connected)?;
-        Ok(TcpStream { io })
+        Ok(TcpStream { io, nature })
     }
 
     /// Creates new `TcpStream` from a `std::net::TcpStream`.
@@ -189,7 +198,7 @@ impl TcpStream {
     pub fn from_std(stream: std::net::TcpStream) -> io::Result<TcpStream> {
         let io = mio::net::TcpStream::from_std(stream);
         let io = PollEvented::new(io)?;
-        Ok(TcpStream { io })
+        Ok(TcpStream { io, nature: InterfaceNature { delay: 0, bandwidth: 0, reliability: 0, security: 0 } })
     }
 
     /// Turns a [`tokio::net::TcpStream`] into a [`std::net::TcpStream`].

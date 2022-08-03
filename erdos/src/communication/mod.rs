@@ -11,7 +11,7 @@ use futures::future;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream, tcp},
+    net::{TcpListener, TcpStream, tcp, InterfaceNature},
     time::sleep,
 };
 
@@ -92,7 +92,7 @@ impl InterProcessMessage {
 ///
 /// The function creates a TCPStream to each node address. The node address vector stores
 /// the network address of each node, and is indexed by node id.
-pub async fn create_tcp_streams(
+pub async fn create_tcp_streams_dual(
     node_addrs: Vec<(SocketAddr,SocketAddr)>,
     node_id: NodeId,
     node_devices: (&[u8],&[u8]),//only the devices of this node is needed, they are used to connect to other nodes' two addresses
@@ -100,9 +100,9 @@ pub async fn create_tcp_streams(
 ) -> Vec<(NodeId, TcpStream, TcpStream)> {
     let node_addr = node_addrs[node_id];
     // Connect to the nodes that have a lower id than the node.
-    let connect_streams_fut = connect_to_nodes(node_addrs[..node_id].to_vec(), node_id,node_devices,natures);
+    let connect_streams_fut = connect_to_nodes_dual(node_addrs[..node_id].to_vec(), node_id,node_devices,natures);
     // Wait for connections from the nodes that have a higher id than the node.
-    let stream_fut = await_node_connections(node_addr, node_addrs.len() - node_id - 1);
+    let stream_fut = await_node_connections_dual(node_addr, node_addrs.len() - node_id - 1);
     // Wait until all connections are established.
     match future::try_join(connect_streams_fut, stream_fut).await {
         Ok((mut streams, await_streams)) => {
@@ -127,7 +127,7 @@ pub async fn create_tcp_streams(
 /// Connects to all addresses and sends node id.
 ///
 /// The function returns a vector of `(NodeId, TcpStream)` for each connection.
-async fn connect_to_nodes(
+async fn connect_to_nodes_dual(
     addrs: Vec<(SocketAddr,SocketAddr)>,
     node_id: NodeId,
     node_devices: (&[u8],&[u8]),
@@ -154,7 +154,7 @@ async fn connect_to_nodes(
 /// Creates TCP stream connection to an address and writes the node id on the TCP stream.
 ///
 /// The function keeps on retrying until it connects successfully.
-async fn connect_to_node(
+async fn connect_to_node_dual(
     dst_addr: &SocketAddr,
     node_id: NodeId,
     node_device: &[u8],
@@ -206,7 +206,7 @@ async fn connect_to_node(
 ///
 /// Upon a new connection, the function reads from the stream the id of the node that initiated
 /// the connection.
-async fn await_node_connections(
+async fn await_node_connections_dual(
     addr: (SocketAddr, SocketAddr),
     expected_conns: usize,
 ) -> Result<Vec<(NodeId, TcpStream,TcpStream)>, std::io::Error> {
@@ -230,7 +230,7 @@ async fn await_node_connections(
 /// Reads a node id from a TCP stream.
 ///
 /// The method is used to discover the id of the node that initiated the connection.
-async fn read_node_id(mut stream0: TcpStream, stream1: TcpStream) -> Result<(NodeId, TcpStream, TcpStream), std::io::Error> {
+async fn read_node_id_dual(mut stream0: TcpStream, stream1: TcpStream) -> Result<(NodeId, TcpStream, TcpStream), std::io::Error> {
     let mut buffer = [0u8; 4];
     match stream0.read_exact(&mut buffer).await {
         Ok(n) => n,
@@ -250,8 +250,7 @@ async fn read_node_id(mut stream0: TcpStream, stream1: TcpStream) -> Result<(Nod
     };
     let node_id1: u32 = NetworkEndian::read_u32(&buffer);
     if node_id0 != node_id1{
-        tracing::error!("received different NodeId from the same Node;");
-        return Err;
+        panic!("received different NodeId from the same Node;");
     }
     Ok((node_id0 as NodeId, stream0,stream1))
 }

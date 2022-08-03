@@ -26,7 +26,8 @@ pub(crate) struct DataSender {
     /// The id of the node the sink is sending data to.
     node_id: NodeId,
     /// Framed TCP write sink.
-    sink: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
+    sink0: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
+    sink1: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
     /// Tokio channel receiver on which to receive data from worker threads.
     rx: UnboundedReceiver<InterProcessMessage>,
     /// Tokio channel sender to `ControlMessageHandler`.
@@ -38,7 +39,8 @@ pub(crate) struct DataSender {
 impl DataSender {
     pub(crate) async fn new(
         node_id: NodeId,
-        sink: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
+        sink0: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
+        sink1: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
         channels_to_senders: Arc<Mutex<ChannelsToSenders>>,
         control_handler: &mut ControlMessageHandler,
     ) -> Self {
@@ -51,7 +53,8 @@ impl DataSender {
         control_handler.add_channel_to_data_sender(node_id, control_tx);
         Self {
             node_id,
-            sink,
+            sink0,
+            sink1,
             rx,
             control_tx: control_handler.get_channel_to_handler(),
             control_rx,
@@ -67,7 +70,7 @@ impl DataSender {
         loop {
             match self.rx.recv().await {
                 Some(msg) => {
-                    if let Err(e) = self.sink.send(msg).await.map_err(CommunicationError::from) {
+                    if let Err(e) = self.sink0.send(msg).await.map_err(CommunicationError::from) {
                         return Err(e);
                     }
                 }
@@ -99,7 +102,8 @@ pub(crate) struct ControlSender {
     /// The id of the node the sink is sending data to.
     node_id: NodeId,
     /// Framed TCP write sink.
-    sink: SplitSink<Framed<TcpStream, ControlMessageCodec>, ControlMessage>,
+    sink0: SplitSink<Framed<TcpStream, ControlMessageCodec>, ControlMessage>,
+    sink1: SplitSink<Framed<TcpStream, ControlMessageCodec>, ControlMessage>,
     /// Tokio channel receiver on which to receive data from worker threads.
     rx: UnboundedReceiver<ControlMessage>,
     /// Tokio channel sender to `ControlMessageHandler`.
@@ -111,7 +115,8 @@ pub(crate) struct ControlSender {
 impl ControlSender {
     pub(crate) fn new(
         node_id: NodeId,
-        sink: SplitSink<Framed<TcpStream, ControlMessageCodec>, ControlMessage>,
+        sink0: SplitSink<Framed<TcpStream, ControlMessageCodec>, ControlMessage>,
+        sink1: SplitSink<Framed<TcpStream, ControlMessageCodec>, ControlMessage>,
         control_handler: &mut ControlMessageHandler,
     ) -> Self {
         // Set up channel to other node.
@@ -122,7 +127,8 @@ impl ControlSender {
         control_handler.add_channel_to_control_sender(node_id, control_tx);
         Self {
             node_id,
-            sink,
+            sink0,
+            sink1,
             rx,
             control_tx: control_handler.get_channel_to_handler(),
             control_rx,
@@ -138,7 +144,7 @@ impl ControlSender {
         loop {
             match self.rx.recv().await {
                 Some(msg) => {
-                    if let Err(e) = self.sink.send(msg).await.map_err(CommunicationError::from) {
+                    if let Err(e) = self.sink0.send(msg).await.map_err(CommunicationError::from) {
                         return Err(e);
                     }
                 }

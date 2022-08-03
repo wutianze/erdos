@@ -170,19 +170,22 @@ impl Node {
     /// Splits a vector of TCPStreams into `DataSender`s and `DataReceiver`s.
     async fn split_data_streams(
         &mut self,
-        mut streams: Vec<(NodeId, TcpStream)>,
+        mut streams: Vec<(NodeId, TcpStream,TcpStream)>,
     ) -> (Vec<DataSender>, Vec<DataReceiver>) {
         let mut sink_halves = Vec::new();
         let mut stream_halves = Vec::new();
-        while let Some((node_id, stream)) = streams.pop() {
+        while let Some((node_id, stream0, stream1)) = streams.pop() {
             // Use the message codec to divide the TCP stream data into messages.
-            let framed = Framed::new(stream, MessageCodec::new());
-            let (split_sink, split_stream) = framed.split();
+            let framed0 = Framed::new(stream0, MessageCodec::new());
+            let framed1 = Framed::new(stream0, MessageCodec::new());
+            let (split_sink0, split_stream0) = framed0.split();
+            let (split_sink1, split_stream1) = framed1.split();
             // Create an ERDOS receiver for the stream half.
             stream_halves.push(
                 DataReceiver::new(
                     node_id,
-                    split_stream,
+                    split_stream0,
+                    split_stream1,
                     self.channels_to_receivers.clone(),
                     &mut self.control_handler,
                 )
@@ -193,7 +196,8 @@ impl Node {
             sink_halves.push(
                 DataSender::new(
                     node_id,
-                    split_sink,
+                    split_sink0,
+                    split_sink1,
                     self.channels_to_senders.clone(),
                     &mut self.control_handler,
                 )
@@ -206,25 +210,29 @@ impl Node {
     /// Splits a vector of TCPStreams into `ControlMessageHandler`, `ControlSender`s and `ControlReceiver`s.
     async fn split_control_streams(
         &mut self,
-        streams: Vec<(NodeId, TcpStream)>,
+        streams: Vec<(NodeId, TcpStream,TcpStream)>,
     ) -> (Vec<ControlSender>, Vec<ControlReceiver>) {
         let mut control_receivers = Vec::new();
         let mut control_senders = Vec::new();
 
-        for (node_id, stream) in streams {
+        for (node_id, stream0,stream1) in streams {
             // Use the message codec to divide the TCP stream data into messages.
-            let framed = Framed::new(stream, ControlMessageCodec::new());
-            let (split_sink, split_stream) = framed.split();
+            let framed0 = Framed::new(stream0, ControlMessageCodec::new());
+            let framed1 = Framed::new(stream1, ControlMessageCodec::new());
+            let (split_sink0, split_stream0) = framed0.split();
+            let (split_sink1, split_stream1) = framed1.split();
             // Create an control receiver for the stream half.
             control_receivers.push(ControlReceiver::new(
                 node_id,
-                split_stream,
+                split_stream0,
+                split_stream1,
                 &mut self.control_handler,
             ));
             // Create an control sender for the sink half.
             control_senders.push(ControlSender::new(
                 node_id,
-                split_sink,
+                split_sink0,
+                split_sink1,
                 &mut self.control_handler,
             ));
         }
@@ -404,9 +412,9 @@ impl Node {
         let num_nodes = self.config.data_addresses.len();
         // Create TCPStreams between all node pairs.
         let control_streams =
-            communication::create_tcp_streams(self.config.control_addresses.clone(), self.id).await;
+            communication::create_tcp_streams_dual(self.config.control_addresses.clone(), self.id,self.config.devices,self.config.natures).await;
         let data_streams =
-            communication::create_tcp_streams(self.config.data_addresses.clone(), self.id).await;
+            communication::create_tcp_streams_dual(self.config.data_addresses.clone(), self.id,self.config.devices,self.config.natures).await;
         let (control_senders, control_receivers) =
             self.split_control_streams(control_streams).await;
         let (senders, receivers) = self.split_data_streams(data_streams).await;

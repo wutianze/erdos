@@ -27,7 +27,8 @@ pub(crate) struct DataReceiver {
     /// The id of the node the TCP stream is receiving data from.
     node_id: NodeId,
     /// Framed TCP read stream.
-    stream: SplitStream<Framed<TcpStream, MessageCodec>>,
+    stream0: SplitStream<Framed<TcpStream, MessageCodec>>,
+    stream1: SplitStream<Framed<TcpStream, MessageCodec>>,
     /// Channel receiver on which new pusher updates are received.
     rx: UnboundedReceiver<(StreamId, Box<dyn PusherT>)>,
     /// Mapping between stream id to [`PusherT`] trait objects.
@@ -43,7 +44,8 @@ pub(crate) struct DataReceiver {
 impl DataReceiver {
     pub(crate) async fn new(
         node_id: NodeId,
-        stream: SplitStream<Framed<TcpStream, MessageCodec>>,
+        stream0: SplitStream<Framed<TcpStream, MessageCodec>>,
+        stream1: SplitStream<Framed<TcpStream, MessageCodec>>,
         channels_to_receivers: Arc<Mutex<ChannelsToReceivers>>,
         control_handler: &mut ControlMessageHandler,
     ) -> Self {
@@ -56,7 +58,8 @@ impl DataReceiver {
         control_handler.add_channel_to_data_receiver(node_id, control_tx);
         Self {
             node_id,
-            stream,
+            stream0,
+            stream1,
             rx,
             stream_id_to_pusher: HashMap::new(),
             control_tx: control_handler.get_channel_to_handler(),
@@ -69,7 +72,7 @@ impl DataReceiver {
         self.control_tx
             .send(ControlMessage::DataReceiverInitialized(self.node_id))
             .map_err(CommunicationError::from)?;
-        while let Some(res) = self.stream.next().await {
+        while let Some(res) = self.stream0.next().await {
             match res {
                 // Push the message to the listening operator executors.
                 Ok(msg) => {
@@ -128,7 +131,8 @@ pub(crate) struct ControlReceiver {
     /// The id of the node the stream is receiving data from.
     node_id: NodeId,
     /// Framed TCP read stream.
-    stream: SplitStream<Framed<TcpStream, ControlMessageCodec>>,
+    stream0: SplitStream<Framed<TcpStream, ControlMessageCodec>>,
+    stream1: SplitStream<Framed<TcpStream, ControlMessageCodec>>,
     /// Tokio channel sender to `ControlMessageHandler`.
     control_tx: UnboundedSender<ControlMessage>,
     /// Tokio channel receiver from `ControlMessageHandler`.
@@ -138,7 +142,8 @@ pub(crate) struct ControlReceiver {
 impl ControlReceiver {
     pub(crate) fn new(
         node_id: NodeId,
-        stream: SplitStream<Framed<TcpStream, ControlMessageCodec>>,
+        stream0: SplitStream<Framed<TcpStream, ControlMessageCodec>>,
+        stream1: SplitStream<Framed<TcpStream, ControlMessageCodec>>,
         control_handler: &mut ControlMessageHandler,
     ) -> Self {
         // Set up control channel.
@@ -146,7 +151,8 @@ impl ControlReceiver {
         control_handler.add_channel_to_control_receiver(node_id, tx);
         Self {
             node_id,
-            stream,
+            stream0,
+            stream1,
             control_tx: control_handler.get_channel_to_handler(),
             control_rx,
         }
@@ -159,7 +165,7 @@ impl ControlReceiver {
         self.control_tx
             .send(ControlMessage::ControlReceiverInitialized(self.node_id))
             .map_err(CommunicationError::from)?;
-        while let Some(res) = self.stream.next().await {
+        while let Some(res) = self.stream0.next().await {
             match res {
                 Ok(msg) => {
                     self.control_tx

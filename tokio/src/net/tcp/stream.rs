@@ -17,6 +17,14 @@ cfg_io_util! {
 }
 
 cfg_net! {
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct InterfaceNature{
+        delay: u8,
+        bandwidth: u8,
+        reliability: u8,
+        security: u8,
+    }
     /// A TCP stream between a local and a remote socket.
     ///
     /// A TCP stream can either be created by connecting to an endpoint, via the
@@ -69,13 +77,6 @@ cfg_net! {
         nature: InterfaceNature, //delay bandwidth reliability security
     }
 
-    #[derive(Copy, Clone)]
-    struct InterfaceNature{
-        delay: u8,
-        bandwidth: u8,
-        reliability: u8,
-        security: u8,
-    }
 }
 
 impl TcpStream {

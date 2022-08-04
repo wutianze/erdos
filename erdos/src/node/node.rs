@@ -177,7 +177,7 @@ impl Node {
         while let Some((node_id, stream0, stream1)) = streams.pop() {
             // Use the message codec to divide the TCP stream data into messages.
             let framed0 = Framed::new(stream0, MessageCodec::new());
-            let framed1 = Framed::new(stream0, MessageCodec::new());
+            let framed1 = Framed::new(stream1, MessageCodec::new());
             let (split_sink0, split_stream0) = framed0.split();
             let (split_sink1, split_stream1) = framed1.split();
             // Create an ERDOS receiver for the stream half.
@@ -412,9 +412,9 @@ impl Node {
         let num_nodes = self.config.data_addresses.len();
         // Create TCPStreams between all node pairs.
         let control_streams =
-            communication::create_tcp_streams_dual(self.config.control_addresses.clone(), self.id,self.config.devices,self.config.natures).await;
+            communication::create_tcp_streams_dual(self.config.control_addresses.clone(), self.id,self.config.devices.clone(),self.config.natures).await;
         let data_streams =
-            communication::create_tcp_streams_dual(self.config.data_addresses.clone(), self.id,self.config.devices,self.config.natures).await;
+            communication::create_tcp_streams_dual(self.config.data_addresses.clone(), self.id,self.config.devices.clone(),self.config.natures).await;
         let (control_senders, control_receivers) =
             self.split_control_streams(control_streams).await;
         let (senders, receivers) = self.split_data_streams(data_streams).await;

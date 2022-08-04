@@ -11,7 +11,7 @@ use futures::future;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream, tcp, InterfaceNature},
+    net::{TcpListener, TcpStream, InterfaceNature},
     time::sleep,
 };
 
@@ -95,12 +95,12 @@ impl InterProcessMessage {
 pub async fn create_tcp_streams_dual(
     node_addrs: Vec<(SocketAddr,SocketAddr)>,
     node_id: NodeId,
-    node_devices: (&[u8],&[u8]),//only the devices of this node is needed, they are used to connect to other nodes' two addresses
-    natures: InterfaceNature,
+    node_devices: (String,String),//only the devices of this node is needed, they are used to connect to other nodes' two addresses
+    natures: (InterfaceNature,InterfaceNature),
 ) -> Vec<(NodeId, TcpStream, TcpStream)> {
     let node_addr = node_addrs[node_id];
     // Connect to the nodes that have a lower id than the node.
-    let connect_streams_fut = connect_to_nodes_dual(node_addrs[..node_id].to_vec(), node_id,node_devices,natures);
+    let connect_streams_fut = connect_to_nodes_dual(node_addrs[..node_id].to_vec(), node_id,(node_devices.0.as_bytes(),node_devices.1.as_bytes()),natures);
     // Wait for connections from the nodes that have a higher id than the node.
     let stream_fut = await_node_connections_dual(node_addr, node_addrs.len() - node_id - 1);
     // Wait until all connections are established.
@@ -137,16 +137,17 @@ async fn connect_to_nodes_dual(
     // For each node address, launch a task that tries to create a TCP stream to the node.
     // Now, each node tries to create two TCP streams using different NICs. Now, two addresses are needed. (test feature)
     for addr in addrs.iter() {
-        connect_futures.push(connect_to_node(&addr.0, node_id, node_devices.0, natures.0));
-        connect_futures.push(connect_to_node(&addr.1, node_id, node_devices.1, natures.1));
+        connect_futures.push(connect_to_node_dual(&addr.0, node_id, node_devices.0, natures.0));
+        connect_futures.push(connect_to_node_dual(&addr.1, node_id, node_devices.1, natures.1));
     }
     // Wait for all tasks to complete successfully.
-    let tcp_results = future::try_join_all(connect_futures).await?;
+    let mut tcp_results = future::try_join_all(connect_futures).await?;
     let mut streams = Vec::new();
-    let mut j = 0;
-    for i in 0..=tcp_results.len()*2{
-        streams.push((i,tcp_results[j],tcp_results[j+1]));
-        j = j+2
+    tcp_results.reverse();
+    for i in 0..=tcp_results.len()/2{
+        let tcp0 = tcp_results.pop().unwrap();
+        let tcp1 = tcp_results.pop().unwrap();
+        streams.push((i,tcp0,tcp1));
     }
     Ok(streams)
 }
@@ -221,7 +222,7 @@ async fn await_node_connections_dual(
         let (stream1, _) = listener1.accept().await?;
         stream1.set_nodelay(true).expect("couldn't disable Nagle");
         // Launch a task that reads the node id from the TCP stream.
-        await_futures.push(read_node_id(stream0, stream1));
+        await_futures.push(read_node_id_dual(stream0, stream1));
     }
     // Await until we've received `expected_conns` node ids.
     future::try_join_all(await_futures).await
@@ -230,7 +231,7 @@ async fn await_node_connections_dual(
 /// Reads a node id from a TCP stream.
 ///
 /// The method is used to discover the id of the node that initiated the connection.
-async fn read_node_id_dual(mut stream0: TcpStream, stream1: TcpStream) -> Result<(NodeId, TcpStream, TcpStream), std::io::Error> {
+async fn read_node_id_dual(mut stream0: TcpStream, mut stream1: TcpStream) -> Result<(NodeId, TcpStream, TcpStream), std::io::Error> {
     let mut buffer = [0u8; 4];
     match stream0.read_exact(&mut buffer).await {
         Ok(n) => n,

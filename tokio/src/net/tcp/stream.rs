@@ -20,10 +20,10 @@ cfg_net! {
 
     #[derive(Debug, Copy, Clone)]
     pub struct InterfaceNature{
-        delay: u8,
-        bandwidth: u8,
-        reliability: u8,
-        security: u8,
+        pub delay: u8,
+        pub bandwidth: u8,
+        pub reliability: u8,
+        pub security: u8,
     }
     /// A TCP stream between a local and a remote socket.
     ///
@@ -141,11 +141,29 @@ impl TcpStream {
     /// Establishes a connection to the specified `addr`.
     async fn connect_addr(addr: SocketAddr, interface: Option<&[u8]>, nature:InterfaceNature) -> io::Result<TcpStream> {
         let sys = mio::net::TcpStream::connect(addr,interface)?;
-        TcpStream::connect_mio(sys,nature).await
+        TcpStream::connect_mio_dual(sys,nature).await
     }
+    
+    pub(crate) async fn connect_mio(sys: mio::net::TcpStream) -> io::Result<TcpStream> {
+        let stream = TcpStream::new(sys)?;
 
-    pub(crate) async fn connect_mio(sys: mio::net::TcpStream, nature: InterfaceNature) -> io::Result<TcpStream> {
-        let stream = TcpStream::new(sys, nature)?;
+        // Once we've connected, wait for the stream to be writable as
+        // that's when the actual connection has been initiated. Once we're
+        // writable we check for `take_socket_error` to see if the connect
+        // actually hit an error or not.
+        //
+        // If all that succeeded then we ship everything on up.
+        poll_fn(|cx| stream.io.registration().poll_write_ready(cx)).await?;
+
+        if let Some(e) = stream.io.take_error()? {
+            return Err(e);
+        }
+
+        Ok(stream)
+    }
+    
+    pub(crate) async fn connect_mio_dual(sys: mio::net::TcpStream, nature: InterfaceNature) -> io::Result<TcpStream> {
+        let stream = TcpStream::new_dual(sys, nature)?;
 
         // Once we've connected, wait for the stream to be writable as
         // that's when the actual connection has been initiated. Once we're
@@ -162,7 +180,12 @@ impl TcpStream {
         Ok(stream)
     }
 
-    pub(crate) fn new(connected: mio::net::TcpStream, nature:InterfaceNature) -> io::Result<TcpStream> {
+    pub(crate) fn new(connected: mio::net::TcpStream) -> io::Result<TcpStream> {
+        let io = PollEvented::new(connected)?;
+        Ok(TcpStream { io, nature:InterfaceNature { delay:0,bandwidth:0,reliability:0,security:0 }})
+    }
+    
+    pub(crate) fn new_dual(connected: mio::net::TcpStream, nature:InterfaceNature) -> io::Result<TcpStream> {
         let io = PollEvented::new(connected)?;
         Ok(TcpStream { io, nature })
     }

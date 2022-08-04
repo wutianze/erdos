@@ -18,7 +18,7 @@ pub struct Configuration {
     /// Mapping between node indices and control socket addresses.
     pub control_addresses: Vec<(SocketAddr,SocketAddr)>,
     /// NIC devices of this node
-    pub devices: ([u8],[u8]),
+    pub devices: (String,String),
     /// Natures of devices
     pub natures: (InterfaceNature,InterfaceNature),
     /// DOT file to export dataflow graph.
@@ -39,7 +39,7 @@ impl Configuration {
         node_index: NodeId,
         data_addresses: Vec<(SocketAddr,SocketAddr)>,
         control_addresses: Vec<(SocketAddr,SocketAddr)>,
-        devices: (&[u8],&[u8]),
+        devices: (String,String),
         natures: (InterfaceNature,InterfaceNature),
         num_threads: usize,
     ) -> Self {
@@ -69,30 +69,29 @@ impl Configuration {
             .expect("Unable to parse number of worker threads");
 
         let data_addrs = args.value_of("data-addresses").unwrap();
-        let mut data_addresses: Vec<SocketAddr> = Vec::new();
+        let mut data_addresses: Vec<(SocketAddr,SocketAddr)> = Vec::new();
         for addrs in data_addrs.split(';') {
-            let (addr0,addr1) = addrs.split(',');
-            data_addresses.push((addr0.parse().expect("Unable to parse socket address"),addr1.parse().expect("Unable to parse socket address")));
+            let mut tmp_addrs = addrs.split(',');
+            data_addresses.push((tmp_addrs.next().unwrap().parse().expect("Unable to parse socket address"),tmp_addrs.next().unwrap().parse().expect("Unable to parse socket address")));
         }
         let control_addrs = args.value_of("control-addresses").unwrap();
-        let mut control_addresses: Vec<SocketAddr> = Vec::new();
+        let mut control_addresses: Vec<(SocketAddr,SocketAddr)> = Vec::new();
         for addrs in control_addrs.split(';') {
-            let (addr0,addr1) = addrs.split(',');
-            control_addresses.push((addr0.parse().expect("Unable to parse socket address"),addr1.parse().expect("Unable to parse socket address")));
+            let mut tmp_addrs = addrs.split(',');
+            control_addresses.push((tmp_addrs.next().unwrap().parse().expect("Unable to parse socket address"),tmp_addrs.next().unwrap().parse().expect("Unable to parse socket address")));
         }
         assert_eq!(
             data_addresses.len(),
             control_addresses.len(),
             "Each node must have 1 data address and 1 control address"
         );
-        let (device0,device1) = args.value_of("device").unwrap().split(',');
-        let devices = (device0,device1);
+        let mut tmp_devices = args.value_of("device").unwrap().split(',');
+        let devices = (tmp_devices.next().unwrap().to_string(),tmp_devices.next().unwrap().to_string());
         let natures_ini = args.value_of("natures").unwrap();
-        let mut nature0:InterfaceNature = InterfaceNature(0,0,0,0);
-        let mut nature1:InterfaceNature = InterfaceNature(0,0,0,0);
-        let (n0,n1) = natures_ini.split(';');
-        (nature0.0,nature0.1,nature0.2,nature0.3) = n0.split(',');
-        (nature1.0,nature1.1,nature1.2,nature1.3) = n1.split(',');
+        let mut tmp_nature = natures_ini.split(';');
+        let (mut n0,mut n1) = (tmp_nature.next().unwrap().split(','),tmp_nature.next().unwrap().split(','));
+        let mut nature0:InterfaceNature = InterfaceNature{delay:n0.next().unwrap().parse().expect("Unable to parse number of nature"),bandwidth:n0.next().unwrap().parse().expect("Unable to parse number of nature"),reliability:n0.next().unwrap().parse().expect("Unable to parse number of nature"),security:n0.next().unwrap().parse().expect("Unable to parse number of nature")};
+        let mut nature1:InterfaceNature = InterfaceNature{delay:n1.next().unwrap().parse().expect("Unable to parse number of nature"),bandwidth:n1.next().unwrap().parse().expect("Unable to parse number of nature"),reliability:n1.next().unwrap().parse().expect("Unable to parse number of nature"),security:n1.next().unwrap().parse().expect("Unable to parse number of nature")};
         let natures = (nature0,nature1);
         let node_index = args
             .value_of("index")

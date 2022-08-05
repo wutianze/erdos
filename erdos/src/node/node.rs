@@ -408,6 +408,7 @@ impl Node {
     }
 
     async fn async_run(&mut self) {
+        dbg!(&self.config);
         // Assign values used later to avoid lifetime errors.
         let num_nodes = self.config.data_addresses.len();
         // Create TCPStreams between all node pairs.

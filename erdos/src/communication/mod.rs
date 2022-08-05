@@ -144,7 +144,7 @@ async fn connect_to_nodes_dual(
     let mut tcp_results = future::try_join_all(connect_futures).await?;
     let mut streams = Vec::new();
     tcp_results.reverse();
-    for i in 0..=tcp_results.len()/2{
+    for i in 0..tcp_results.len()/2{
         let tcp0 = tcp_results.pop().unwrap();
         let tcp1 = tcp_results.pop().unwrap();
         streams.push((i,tcp0,tcp1));
@@ -161,6 +161,7 @@ async fn connect_to_node_dual(
     node_device: &[u8],
     nature: InterfaceNature,
 ) -> Result<TcpStream, std::io::Error> {
+    tracing::info!("in connect_to_node_dual");
     // Keeps on reatying to connect to `dst_addr` until it succeeds.
     let mut last_err_msg_time = Instant::now();
     loop {
@@ -232,24 +233,24 @@ async fn await_node_connections_dual(
 ///
 /// The method is used to discover the id of the node that initiated the connection.
 async fn read_node_id_dual(mut stream0: TcpStream, mut stream1: TcpStream) -> Result<(NodeId, TcpStream, TcpStream), std::io::Error> {
-    let mut buffer = [0u8; 4];
-    match stream0.read_exact(&mut buffer).await {
+    let mut buffer0 = [0u8; 4];
+    match stream0.read_exact(&mut buffer0).await {
         Ok(n) => n,
         Err(e) => {
             tracing::error!("failed to read from socket; err = {:?}", e);
             return Err(e);
         }
     };
-    let node_id0: u32 = NetworkEndian::read_u32(&buffer);
-    let mut buffer = [0u8; 4];
-    match stream1.read_exact(&mut buffer).await {
+    let node_id0: u32 = NetworkEndian::read_u32(&buffer0);
+    let mut buffer1 = [0u8; 4];
+    match stream1.read_exact(&mut buffer1).await {
         Ok(n) => n,
         Err(e) => {
             tracing::error!("failed to read from socket; err = {:?}", e);
             return Err(e);
         }
     };
-    let node_id1: u32 = NetworkEndian::read_u32(&buffer);
+    let node_id1: u32 = NetworkEndian::read_u32(&buffer1);
     if node_id0 != node_id1{
         panic!("received different NodeId from the same Node;");
     }

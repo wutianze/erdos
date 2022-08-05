@@ -243,6 +243,18 @@ pub fn new_app(name: &str) -> clap::App {
                 .help("Comma separated list of control socket addresses of all nodes"),
         )
         .arg(
+            Arg::with_name("devices")
+                .long("devices")
+                .default_value("lo,eth0")
+                .help("Comma separated list of NICs of all nodes"),
+        )
+        .arg(
+            Arg::with_name("natures")
+                .long("natures")
+                .default_value("0,0,0,0;1,1,1,1")
+                .help(""),
+        )
+        .arg(
             Arg::with_name("index")
                 .short("i")
                 .long("index")

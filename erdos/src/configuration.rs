@@ -7,7 +7,7 @@ use tokio::net::InterfaceNature;
 use crate::node::NodeId;
 
 /// Stores the configuration parameters of a [`node`](crate::node::Node).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Configuration {
     /// The index of the node.
     pub index: NodeId,
@@ -85,13 +85,13 @@ impl Configuration {
             control_addresses.len(),
             "Each node must have 1 data address and 1 control address"
         );
-        let mut tmp_devices = args.value_of("device").unwrap().split(',');
+        let mut tmp_devices = args.value_of("devices").unwrap().split(',');
         let devices = (tmp_devices.next().unwrap().to_string(),tmp_devices.next().unwrap().to_string());
         let natures_ini = args.value_of("natures").unwrap();
         let mut tmp_nature = natures_ini.split(';');
         let (mut n0,mut n1) = (tmp_nature.next().unwrap().split(','),tmp_nature.next().unwrap().split(','));
-        let mut nature0:InterfaceNature = InterfaceNature{delay:n0.next().unwrap().parse().expect("Unable to parse number of nature"),bandwidth:n0.next().unwrap().parse().expect("Unable to parse number of nature"),reliability:n0.next().unwrap().parse().expect("Unable to parse number of nature"),security:n0.next().unwrap().parse().expect("Unable to parse number of nature")};
-        let mut nature1:InterfaceNature = InterfaceNature{delay:n1.next().unwrap().parse().expect("Unable to parse number of nature"),bandwidth:n1.next().unwrap().parse().expect("Unable to parse number of nature"),reliability:n1.next().unwrap().parse().expect("Unable to parse number of nature"),security:n1.next().unwrap().parse().expect("Unable to parse number of nature")};
+        let nature0:InterfaceNature = InterfaceNature{delay:n0.next().unwrap().parse().expect("Unable to parse number of nature"),bandwidth:n0.next().unwrap().parse().expect("Unable to parse number of nature"),reliability:n0.next().unwrap().parse().expect("Unable to parse number of nature"),security:n0.next().unwrap().parse().expect("Unable to parse number of nature")};
+        let nature1:InterfaceNature = InterfaceNature{delay:n1.next().unwrap().parse().expect("Unable to parse number of nature"),bandwidth:n1.next().unwrap().parse().expect("Unable to parse number of nature"),reliability:n1.next().unwrap().parse().expect("Unable to parse number of nature"),security:n1.next().unwrap().parse().expect("Unable to parse number of nature")};
         let natures = (nature0,nature1);
         let node_index = args
             .value_of("index")

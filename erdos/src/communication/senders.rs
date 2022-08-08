@@ -73,6 +73,9 @@ impl DataSender {
                     if let Err(e) = self.sink0.send(msg).await.map_err(CommunicationError::from) {
                         return Err(e);
                     }
+                    if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
+                        return Err(e);
+                    }
                 }
                 None => return Err(CommunicationError::Disconnected),
             }

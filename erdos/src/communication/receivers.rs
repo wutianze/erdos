@@ -67,42 +67,60 @@ impl DataReceiver {
         }
     }
 
-    pub(crate) async fn run(&mut self) -> Result<(), CommunicationError> {
+    pub(crate) async fn run(&mut self, policy: u8) -> Result<(), CommunicationError> {
         // Notify `ControlMessageHandler` that receiver is initialized.
         self.control_tx
             .send(ControlMessage::DataReceiverInitialized(self.node_id))
             .map_err(CommunicationError::from)?;
-        while let Some(res) = self.stream0.next().await {
+        let msg0 = Arc::new(Mutex::new(BytesMut::new()));
+        let msg1 = Arc::new(Mutex::new(BytesMut::new()));
+        let msg00 = msg0.clone();
+        let msg11 = msg1.clone();
+        tokio::spawn(async{
+            Some(res) = self.stream0.next().await;
+                    });
+        loop{
+            
+            let res = tokio::select!{
+                Some(res) = self.stream0.next() =>{
+                    println!("receive from stream0");
+                    res
+                },
+                Some(res) = self.stream1.next() =>{
+                    println!("receive from stream1");
+                    res  
+                },
+            };
+            
             match res {
-                // Push the message to the listening operator executors.
-                Ok(msg) => {
-                    // Update pushers before we send the message.
-                    // Note: we may want to update the pushers less frequently.
-                    self.update_pushers().await;
-                    // Send the message.
-                    let (metadata, bytes) = match msg {
-                        InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
-                        InterProcessMessage::Deserialized {
-                            metadata: _,
-                            data: _,
-                        } => unreachable!(),
-                    };
-                    match self.stream_id_to_pusher.get_mut(&metadata.stream_id) {
-                        Some(pusher) => {
-                            if let Err(e) = pusher.send_from_bytes(bytes) {
-                                return Err(e);
+                    // Push the message to the listening operator executors.
+                    Ok(msg) => {
+                        // Update pushers before we send the message.
+                        // Note: we may want to update the pushers less frequently.
+                        self.update_pushers().await;
+                        // Send the message.
+                        let (metadata, bytes) = match msg {
+                            InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
+                            InterProcessMessage::Deserialized {
+                                metadata: _,
+                                data: _,
+                            } => unreachable!(),
+                        };
+                        match self.stream_id_to_pusher.get_mut(&metadata.stream_id) {
+                            Some(pusher) => {
+                                if let Err(e) = pusher.send_from_bytes(bytes) {
+                                    return Err(e);
+                                }
                             }
+                            None => panic!(
+                                "Receiver does not have any pushers. \
+                                 Race condition during data-flow reconfiguration."
+                            ),
                         }
-                        None => panic!(
-                            "Receiver does not have any pushers. \
-                             Race condition during data-flow reconfiguration."
-                        ),
                     }
+                    Err(e) => return Err(CommunicationError::from(e)),
                 }
-                Err(e) => return Err(CommunicationError::from(e)),
             }
-        }
-        Ok(())
     }
 
     // TODO: update this method.
@@ -121,7 +139,7 @@ pub(crate) async fn run_receivers(
     mut receivers: Vec<DataReceiver>,
 ) -> Result<(), CommunicationError> {
     // Wait for all futures to finish. It will happen only when all streams are closed.
-    future::join_all(receivers.iter_mut().map(|receiver| receiver.run())).await;
+    future::join_all(receivers.iter_mut().map(|receiver| receiver.run(0))).await;
     Ok(())
 }
 

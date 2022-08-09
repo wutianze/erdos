@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use bytes::BytesMut;
 use futures::{future, stream::SplitStream, FutureExt};
 use futures_util::stream::StreamExt;
 use tokio::{
@@ -67,7 +68,7 @@ impl DataReceiver {
         }
     }
 
-    pub(crate) async fn run(&mut self, policy: u8) -> Result<(), CommunicationError> {
+    pub(crate) async fn run(&'static mut self, policy: u8) -> Result<(), CommunicationError> {
         // Notify `ControlMessageHandler` that receiver is initialized.
         self.control_tx
             .send(ControlMessage::DataReceiverInitialized(self.node_id))
@@ -76,9 +77,50 @@ impl DataReceiver {
         let msg1 = Arc::new(Mutex::new(BytesMut::new()));
         let msg00 = msg0.clone();
         let msg11 = msg1.clone();
-        tokio::spawn(async{
-            Some(res) = self.stream0.next().await;
-                    });
+        let stream0 = &self.stream0;
+        let stream1 = &self.stream1;
+        let handle0 = tokio::spawn(async{
+            while let Some(res) = stream0.next().await{
+                    println!("receive from stream0");
+            match res {
+                // Push the message to the listening operator executors.
+                Ok(msg) => {
+                        let (metadata, bytes) = match msg {
+                            InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
+                            InterProcessMessage::Deserialized {
+                                metadata: _,
+                                data: _,
+                            } => unreachable!(),
+                        };
+                        let mut msg_tmp = msg00.lock().await;
+                        *msg_tmp = bytes;
+                    }
+                Err(e) => panic!("DataReceiver receives an Error and panic"),
+                }
+                    }
+    });
+        let handle1 = tokio::spawn(async move{
+            while let Some(res) = stream1.next().await{
+                    println!("receive from stream1");
+            match res {
+                // Push the message to the listening operator executors.
+                Ok(msg) => {
+                        let (metadata, bytes) = match msg {
+                            InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
+                            InterProcessMessage::Deserialized {
+                                metadata: _,
+                                data: _,
+                            } => unreachable!(),
+                        };
+                        let mut msg_tmp = msg11.lock().await;
+                        *msg_tmp = bytes;
+                    }
+                Err(e) => panic!("DataReceiver receives an Error and panic"),
+                }
+                    }
+    });
+
+    /*
         loop{
             
             let res = tokio::select!{
@@ -120,7 +162,10 @@ impl DataReceiver {
                     }
                     Err(e) => return Err(CommunicationError::from(e)),
                 }
-            }
+            }*/
+            handle0.await;
+            handle1.await;
+            Ok(())
     }
 
     // TODO: update this method.

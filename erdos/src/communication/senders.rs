@@ -70,7 +70,7 @@ impl DataSender {
         loop {
             match self.rx.recv().await {
                 Some(msg) => {
-                    if let Err(e) = self.sink0.send(msg).await.map_err(CommunicationError::from) {
+                    if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
                         return Err(e);
                     }
                     if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {

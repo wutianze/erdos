@@ -22,6 +22,8 @@ use crate::{
     scheduler::endpoints_manager::ChannelsToReceivers,
 };
 
+use super::MessageMetadata;
+
 /// Listens on a TCP stream, and pushes messages it receives to operator executors.
 #[allow(dead_code)]
 pub(crate) struct DataReceiver {
@@ -68,57 +70,114 @@ impl DataReceiver {
         }
     }
 
-    pub(crate) async fn run(&'static mut self, policy: u8) -> Result<(), CommunicationError> {
+    pub(crate) async fn run(&mut self, policy: u8) -> Result<(), CommunicationError> {
         // Notify `ControlMessageHandler` that receiver is initialized.
         self.control_tx
             .send(ControlMessage::DataReceiverInitialized(self.node_id))
             .map_err(CommunicationError::from)?;
-        let msg0 = Arc::new(Mutex::new(BytesMut::new()));
-        let msg1 = Arc::new(Mutex::new(BytesMut::new()));
-        let msg00 = msg0.clone();
-        let msg11 = msg1.clone();
-        let stream0 = &self.stream0;
-        let stream1 = &self.stream1;
-        let handle0 = tokio::spawn(async{
+        //let msg0 = Arc::new(std::sync::Mutex::new(InterProcessMessage::new_serialized(BytesMut::new(), MessageMetadata{ stream_id: StreamId::new_deterministic() })));
+        //let msg1 = Arc::new(std::sync::Mutex::new(InterProcessMessage::new_serialized(BytesMut::new(), MessageMetadata{ stream_id: StreamId::new_deterministic() })));
+        //let msg00 = msg0.clone();
+        //let msg01 = msg0.clone();
+        //let msg10 = msg1.clone();
+        //let msg11 = msg1.clone();
+        let stream0 = &mut self.stream0;
+        let stream1 = &mut self.stream1;
+
+        let (tx, mut mrx) = mpsc::channel(32);
+        let tx2 = tx.clone();
+
+
+        let handle0 = async move{
             while let Some(res) = stream0.next().await{
                     println!("receive from stream0");
             match res {
                 // Push the message to the listening operator executors.
                 Ok(msg) => {
-                        let (metadata, bytes) = match msg {
-                            InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
-                            InterProcessMessage::Deserialized {
-                                metadata: _,
-                                data: _,
-                            } => unreachable!(),
-                        };
-                        let mut msg_tmp = msg00.lock().await;
-                        *msg_tmp = bytes;
+                    if let Err(e) = tx.send(msg).await {
+                        panic!("stream0 send msg fail")
+                    }
+                        //let mut msg_tmp = msg0.lock().unwrap();
+                        //*msg_tmp = msg;
                     }
                 Err(e) => panic!("DataReceiver receives an Error and panic"),
                 }
                     }
-    });
-        let handle1 = tokio::spawn(async move{
+    };
+        let handle1 = async move{
             while let Some(res) = stream1.next().await{
                     println!("receive from stream1");
             match res {
                 // Push the message to the listening operator executors.
                 Ok(msg) => {
-                        let (metadata, bytes) = match msg {
-                            InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
-                            InterProcessMessage::Deserialized {
-                                metadata: _,
-                                data: _,
-                            } => unreachable!(),
-                        };
-                        let mut msg_tmp = msg11.lock().await;
-                        *msg_tmp = bytes;
+                    if let Err(e) = tx2.send(msg).await {
+                        panic!("stream0 send msg fail")
+                    }
+                        //let mut msg_tmp = msg1.lock().unwrap();
+                        //*msg_tmp = msg;
                     }
                 Err(e) => panic!("DataReceiver receives an Error and panic"),
                 }
                     }
-    });
+    };
+
+    let rx = &mut self.rx;
+    let stream_id_to_pusher = &mut self.stream_id_to_pusher;
+    let handle2 = async move{
+        loop{
+            while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
+                stream_id_to_pusher.insert(stream_id, pusher);
+            }
+            while let Some(msg) = mrx.recv().await{
+                let (metadata, bytes) = match msg{
+                    InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
+                    InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
+                };
+                match stream_id_to_pusher.get_mut(&metadata.stream_id) {
+                    Some(pusher) => {
+                        if let Err(e) = pusher.send_from_bytes(bytes) {
+                            panic!("pusher send_from_bytes error")
+                        }
+                    }
+                    None => {
+                        println!("Receiver does not have any pushers.")
+                    },
+                }
+            }
+            /*
+                let msg0_tmp = msg00.lock().unwrap();
+                let (metadata, bytes) = match msg0_tmp.clone(){
+                    InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
+                    InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
+                };
+                match stream_id_to_pusher.get_mut(&metadata.stream_id) {
+                    Some(pusher) => {
+                        if let Err(e) = pusher.send_from_bytes(bytes) {
+                            panic!("pusher send_from_bytes error")
+                        }
+                    }
+                    None => {
+                        //println!("Receiver does not have any pushers.")
+                    },
+                }
+                let msg1_tmp = msg10.lock().unwrap();
+                let (metadata, bytes) = match msg1_tmp.clone(){
+                    InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
+                    InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
+                };
+                match stream_id_to_pusher.get_mut(&metadata.stream_id) {
+                    Some(pusher) => {
+                        if let Err(e) = pusher.send_from_bytes(bytes) {
+                            panic!("pusher send_from_bytes error");
+                        }
+                    }
+                    None => {
+                        //println!("Receiver does not have any pushers.")
+                    },
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;*/
+        }
+    };
 
     /*
         loop{
@@ -163,8 +222,8 @@ impl DataReceiver {
                     Err(e) => return Err(CommunicationError::from(e)),
                 }
             }*/
-            handle0.await;
-            handle1.await;
+            let tuple = future::join3(handle0, handle1, handle2);
+            tuple.await;
             Ok(())
     }
 
@@ -183,6 +242,7 @@ impl DataReceiver {
 pub(crate) async fn run_receivers(
     mut receivers: Vec<DataReceiver>,
 ) -> Result<(), CommunicationError> {
+    println!("run_receivers");
     // Wait for all futures to finish. It will happen only when all streams are closed.
     future::join_all(receivers.iter_mut().map(|receiver| receiver.run(0))).await;
     Ok(())
@@ -229,6 +289,7 @@ impl ControlReceiver {
             .send(ControlMessage::ControlReceiverInitialized(self.node_id))
             .map_err(CommunicationError::from)?;
         while let Some(res) = self.stream0.next().await {
+            print!("receive control message");
             match res {
                 Ok(msg) => {
                     self.control_tx

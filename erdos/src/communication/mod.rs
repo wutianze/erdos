@@ -58,6 +58,7 @@ pub enum ControlMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageMetadata {
     pub stream_id: StreamId,
+    pub device_index: u8,
 }
 
 #[derive(Clone)]
@@ -82,7 +83,7 @@ impl InterProcessMessage {
         stream_id: StreamId,
     ) -> Self {
         Self::Deserialized {
-            metadata: MessageMetadata { stream_id },
+            metadata: MessageMetadata { stream_id, device_index:0 },
             data,
         }
     }

@@ -70,6 +70,7 @@ impl DataSender {
         loop {
             match self.rx.recv().await {
                 Some(msg) => {
+                    println!("send sth");
                     if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
                         return Err(e);
                     }
@@ -88,6 +89,7 @@ impl DataSender {
 /// on a mpsc channel for new `InterProcessMessages` messages, which it
 /// forwards on the TCP stream.
 pub(crate) async fn run_senders(senders: Vec<DataSender>) -> Result<(), CommunicationError> {
+    println!("run_senders");
     // Waits until all futures complete. This code will only be reached
     // when all the mpsc channels are closed.
     future::join_all(
@@ -147,7 +149,10 @@ impl ControlSender {
         loop {
             match self.rx.recv().await {
                 Some(msg) => {
-                    if let Err(e) = self.sink0.send(msg).await.map_err(CommunicationError::from) {
+                    if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
+                        return Err(e);
+                    }
+                    if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
                         return Err(e);
                     }
                 }

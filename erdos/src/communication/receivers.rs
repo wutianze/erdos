@@ -124,15 +124,16 @@ impl DataReceiver {
     let rx = &mut self.rx;
     let stream_id_to_pusher = &mut self.stream_id_to_pusher;
     let handle2 = async move{
-        loop{
-            while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
-                stream_id_to_pusher.insert(stream_id, pusher);
-            }
+        
             while let Some(msg) = mrx.recv().await{
+                while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
+                    stream_id_to_pusher.insert(stream_id, pusher);
+                }
                 let (metadata, bytes) = match msg{
                     InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
                     InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
                 };
+                tracing::info!("receive msg metadata:{},",metadata.stream_id);
                 match stream_id_to_pusher.get_mut(&metadata.stream_id) {
                     Some(pusher) => {
                         if let Err(e) = pusher.send_from_bytes(bytes) {
@@ -176,7 +177,6 @@ impl DataReceiver {
                     },
                 }
                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;*/
-        }
     };
 
     /*

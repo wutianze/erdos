@@ -26,7 +26,7 @@ impl<D: 'static + Serializable + Send + Sync + Debug> SendEndpoint<Arc<D>> {
         match self {
             Self::InterThread(sender) => sender.send(msg).map_err(CommunicationError::from),
             Self::InterProcess(stream_id, sender) => sender
-                .send(InterProcessMessage::new_deserialized(msg, *stream_id))
+                .send(InterProcessMessage::new_deserialized(msg, *stream_id))//stream_id
                 .map_err(CommunicationError::from),
         }
     }

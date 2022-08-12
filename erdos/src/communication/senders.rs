@@ -71,11 +71,17 @@ impl DataSender {
             match self.rx.recv().await {
                 Some(msg) => {
                     println!("send sth");
-                    if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
-                        return Err(e);
-                    }
-                    if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
-                        return Err(e);
+                    match msg{
+                        InterProcessMessage::Serialized {metadata:_,bytes:_ } => unreachable!(),
+                        InterProcessMessage::Deserialized { ref metadata, ref data } => {
+                        if let Err(e) = self.sink0.send(InterProcessMessage::new_deserialized_dual(data.clone(), metadata.stream_id, 0,)).await.map_err(CommunicationError::from) {
+                            return Err(e);
+                        }//this msg is device0
+                        if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
+                            return Err(e);
+                        }               
+                        //may need to use join if sink.send doesnt return instantly,TODO
+                        },
                     }
                 }
                 None => return Err(CommunicationError::Disconnected),
@@ -148,13 +154,13 @@ impl ControlSender {
         // TODO: listen on control_rx
         loop {
             match self.rx.recv().await {
-                Some(msg) => {
-                    if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
+                Some(msg) => {//TODO, we dont change control part now
+                    if let Err(e) = self.sink0.send(msg).await.map_err(CommunicationError::from) {
                         return Err(e);
                     }
-                    if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
+                    /*if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
                         return Err(e);
-                    }
+                    }*/
                 }
                 None => {
                     return Err(CommunicationError::Disconnected);

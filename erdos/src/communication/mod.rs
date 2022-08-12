@@ -59,6 +59,7 @@ pub enum ControlMessage {
 pub struct MessageMetadata {
     pub stream_id: StreamId,
     pub device_index: u8,
+    pub timestamp_0: u64,//the time this msg is generated
 }
 
 #[derive(Clone)]
@@ -83,7 +84,19 @@ impl InterProcessMessage {
         stream_id: StreamId,
     ) -> Self {
         Self::Deserialized {
-            metadata: MessageMetadata { stream_id, device_index:0 },
+            metadata: MessageMetadata { stream_id, device_index:1, timestamp_0:0},//we will fill device_index in senders.rs
+            data,
+        }
+    }
+
+    pub fn new_deserialized_dual(
+        data: Arc<dyn Serializable + Send + Sync>,
+        stream_id: StreamId,
+        device_index: u8,
+        timestamp_0: u64,
+    ) -> Self {
+        Self::Deserialized {
+            metadata: MessageMetadata { stream_id, device_index, timestamp_0},
             data,
         }
     }
@@ -255,5 +268,6 @@ async fn read_node_id_dual(mut stream0: TcpStream, mut stream1: TcpStream) -> Re
     if node_id0 != node_id1{
         panic!("received different NodeId from the same Node;");
     }
+    tracing::info!("read_node_id_dual get stream_id:{}",node_id0);
     Ok((node_id0 as NodeId, stream0,stream1))
 }

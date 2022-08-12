@@ -24,7 +24,7 @@ impl SourceOperator {
 impl Source<usize> for SourceOperator {
     fn run(&mut self, _operator_config: &OperatorConfig, write_stream: &mut WriteStream<usize>) {
         tracing::info!("Running Source Operator");
-        for t in 0..10 {
+        for t in 0..3 {
             let timestamp = Timestamp::Time(vec![t as u64]);
             write_stream
                 .send(Message::new_message(timestamp.clone(), t))

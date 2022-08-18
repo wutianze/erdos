@@ -25,6 +25,22 @@ use crate::{
 use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue, Receiver};
 use super::{MessageMetadata, communication_deadline::CommunicationDeadline};
 
+pub struct ServerTimeInfo{
+    start_time_of_handled_msg: u128,
+    timestamp_1: u128,
+    timestamp_2: u128,
+}
+
+impl ServerTimeInfo{
+    pub fn new(
+        start_time_of_handled_msg: u128,
+        timestamp_1: u128,
+        timestamp_2: u128,
+    ) -> Self{
+        Self{start_time_of_handled_msg,timestamp_1,timestamp_2}
+    }
+}
+
 /// Listens on a TCP stream, and pushes messages it receives to operator executors.
 #[allow(dead_code)]
 pub(crate) struct DataReceiver {
@@ -44,8 +60,8 @@ pub(crate) struct DataReceiver {
     /// Tokio channel receiver from `ControlMessageHandler`.
     control_rx: UnboundedReceiver<ControlMessage>,
 
+    deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>,
     deadline_queue_rx: Receiver<CommunicationDeadline>,
-    delay_handler: DelayHandle,
 }
 
 impl DataReceiver {
@@ -55,8 +71,8 @@ impl DataReceiver {
         stream1: SplitStream<Framed<TcpStream, MessageCodec>>,
         channels_to_receivers: Arc<Mutex<ChannelsToReceivers>>,
         control_handler: &mut ControlMessageHandler,
+        deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>,
         deadline_queue_rx: Receiver<CommunicationDeadline>,
-        delay_handler: DelayHandle,
     ) -> Self {
         // Create a channel for this stream.
         let (tx, rx) = mpsc::unbounded_channel();
@@ -73,8 +89,8 @@ impl DataReceiver {
             stream_id_to_pusher: HashMap::new(),
             control_tx: control_handler.get_channel_to_handler(),
             control_rx,
+            deadline_queue,
             deadline_queue_rx,
-            delay_handler,
         }
     }
 
@@ -127,16 +143,18 @@ impl DataReceiver {
     let stream_id_to_pusher = &mut self.stream_id_to_pusher;
     let deadline_queue_rx = &mut self.deadline_queue_rx;
     let handle2 = async move{
-        let start_time_of_handled_msg: u128 = 0;//TODO:should be hash map<stream_id, timestamp>
+        let mut server_info = HashMap::new();
         loop{
             tokio::select! {
                 Some(communication_deadline) = deadline_queue_rx.receive() =>{// stage 1 should never run this
                     //should only happen in Stage::ResponseReceived, every msg will cause this
                     if communication_deadline.start_timestamp > start_time_of_handled_msg{// the response of this deadline is received
-
+                        continue;
+                    }else{
+                        tracing::warn!("deadline alarmed for stream:{} began at time:{}",communication_deadline.stream_id,communication_deadline.start_timestamp);
+                        start_time_of_handled_msg = communication_deadline.start_timestamp;
+                        //run the handler
                     }
-                    tracing::info!("deadline alarmed for stream:{} began at time:{}",communication_deadline.stream_id,communication_deadline.start_timestamp);
-                    //run the handler
                 },
                 Some(msg) = mrx.recv().await =>{
                     while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
@@ -146,19 +164,43 @@ impl DataReceiver {
                         InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
                         InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
                     };
-                    metadata.timestamp_3 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
+                    
                     tracing::info!("receive msg metadata:{},",metadata.stream_id);
-                    start_time_of_handled_msg = metadata.timestamp_0;
-                    match stream_id_to_pusher.get_mut(&metadata.stream_id) {
-                        Some(pusher) => {
-                            if let Err(e) = pusher.send_from_bytes(bytes) {
-                                panic!("pusher send_from_bytes error")
-                            }
-                        }
-                        None => {
-                            println!("Receiver does not have any pushers.")
+
+                    let piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.stream_id, metadata.timestamp_1, metadata.timestamp_2));
+                    match metadata.stage{
+                        Stage::RequestReceived =>{
+                            metadata.timestamp_1 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
                         },
+                        Stage::ResponseReceived =>{
+                            metadata.timestamp_3 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
+                        },
+                        else =>{
+                            panic!("DataReceiver received msg with wrong Stage");
+                        }
                     }
+                    if metadata.timestamp_0 < *piece_info.start_time_of_handled_msg{
+                        //todo: do sth to update the server_info
+                        continue;//out of date msg
+                    }
+
+                    //new msg
+                    if metadata.device == 0{//we get main msg first, use it directly
+                        *piece_info.start_time_of_handled_msg = metadata.timestamp_0;
+                        *piece_info.timestamp_1 = (metadata.timestamp_1 + piece_info.timestamp_1)/2;
+                        *piece_info.timestamp_2 = (metadata.timestamp_2 + piece_info.timestamp_2)/2;
+                        match stream_id_to_pusher.get_mut(&metadata.stream_id) {
+                            Some(pusher) => {
+                                if let Err(e) = pusher.send_from_bytes(bytes) {
+                                    panic!("pusher send_from_bytes error")
+                                }
+                            }
+                            None => {
+                                println!("Receiver does not have any pushers.")
+                            },
+                        }   
+                    }
+                    
                 },
                 else => break,
             }

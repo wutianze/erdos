@@ -30,6 +30,7 @@ use crate::{
     dataflow::graph::AbstractGraph,
 };
 
+use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue, Receiver};
 use super::worker::Worker;
 
 /// Unique index for a [`Node`].
@@ -180,6 +181,9 @@ impl Node {
             let framed1 = Framed::new(stream1, MessageCodec::new());
             let (split_sink0, split_stream0) = framed0.split();
             let (split_sink1, split_stream1) = framed1.split();
+            
+            
+            let (deadline_queue_tx, deadline_queue_rx) = delay_queue();
             // Create an ERDOS receiver for the stream half.
             stream_halves.push(
                 DataReceiver::new(
@@ -188,6 +192,8 @@ impl Node {
                     split_stream1,
                     self.channels_to_receivers.clone(),
                     &mut self.control_handler,
+                    deadline_queue_tx,
+                    deadline_queue_rx,
                 )
                 .await,
             );
@@ -200,6 +206,7 @@ impl Node {
                     split_sink1,
                     self.channels_to_senders.clone(),
                     &mut self.control_handler,
+                    deadline_queue_tx,
                 )
                 .await,
             );

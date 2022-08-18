@@ -22,7 +22,8 @@ use crate::{
     scheduler::endpoints_manager::ChannelsToReceivers,
 };
 
-use super::MessageMetadata;
+use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue, Receiver};
+use super::{MessageMetadata, communication_deadline::CommunicationDeadline};
 
 /// Listens on a TCP stream, and pushes messages it receives to operator executors.
 #[allow(dead_code)]
@@ -42,6 +43,9 @@ pub(crate) struct DataReceiver {
     control_tx: UnboundedSender<ControlMessage>,
     /// Tokio channel receiver from `ControlMessageHandler`.
     control_rx: UnboundedReceiver<ControlMessage>,
+
+    deadline_queue_rx: Receiver<CommunicationDeadline>,
+    delay_handler: DelayHandle,
 }
 
 impl DataReceiver {
@@ -51,6 +55,8 @@ impl DataReceiver {
         stream1: SplitStream<Framed<TcpStream, MessageCodec>>,
         channels_to_receivers: Arc<Mutex<ChannelsToReceivers>>,
         control_handler: &mut ControlMessageHandler,
+        deadline_queue_rx: Receiver<CommunicationDeadline>,
+        delay_handler: DelayHandle,
     ) -> Self {
         // Create a channel for this stream.
         let (tx, rx) = mpsc::unbounded_channel();
@@ -67,6 +73,8 @@ impl DataReceiver {
             stream_id_to_pusher: HashMap::new(),
             control_tx: control_handler.get_channel_to_handler(),
             control_rx,
+            deadline_queue_rx,
+            delay_handler,
         }
     }
 
@@ -75,12 +83,6 @@ impl DataReceiver {
         self.control_tx
             .send(ControlMessage::DataReceiverInitialized(self.node_id))
             .map_err(CommunicationError::from)?;
-        //let msg0 = Arc::new(std::sync::Mutex::new(InterProcessMessage::new_serialized(BytesMut::new(), MessageMetadata{ stream_id: StreamId::new_deterministic() })));
-        //let msg1 = Arc::new(std::sync::Mutex::new(InterProcessMessage::new_serialized(BytesMut::new(), MessageMetadata{ stream_id: StreamId::new_deterministic() })));
-        //let msg00 = msg0.clone();
-        //let msg01 = msg0.clone();
-        //let msg10 = msg1.clone();
-        //let msg11 = msg1.clone();
         let stream0 = &mut self.stream0;
         let stream1 = &mut self.stream1;
 
@@ -123,105 +125,45 @@ impl DataReceiver {
 
     let rx = &mut self.rx;
     let stream_id_to_pusher = &mut self.stream_id_to_pusher;
+    let deadline_queue_rx = &mut self.deadline_queue_rx;
     let handle2 = async move{
-        
-            while let Some(msg) = mrx.recv().await{
-                while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
-                    stream_id_to_pusher.insert(stream_id, pusher);
-                }
-                let (metadata, bytes) = match msg{
-                    InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
-                    InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
-                };
-                tracing::info!("receive msg metadata:{},",metadata.stream_id);
-                match stream_id_to_pusher.get_mut(&metadata.stream_id) {
-                    Some(pusher) => {
-                        if let Err(e) = pusher.send_from_bytes(bytes) {
-                            panic!("pusher send_from_bytes error")
-                        }
-                    }
-                    None => {
-                        println!("Receiver does not have any pushers.")
-                    },
-                }
-            }
-            /*
-                let msg0_tmp = msg00.lock().unwrap();
-                let (metadata, bytes) = match msg0_tmp.clone(){
-                    InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
-                    InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
-                };
-                match stream_id_to_pusher.get_mut(&metadata.stream_id) {
-                    Some(pusher) => {
-                        if let Err(e) = pusher.send_from_bytes(bytes) {
-                            panic!("pusher send_from_bytes error")
-                        }
-                    }
-                    None => {
-                        //println!("Receiver does not have any pushers.")
-                    },
-                }
-                let msg1_tmp = msg10.lock().unwrap();
-                let (metadata, bytes) = match msg1_tmp.clone(){
-                    InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
-                    InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
-                };
-                match stream_id_to_pusher.get_mut(&metadata.stream_id) {
-                    Some(pusher) => {
-                        if let Err(e) = pusher.send_from_bytes(bytes) {
-                            panic!("pusher send_from_bytes error");
-                        }
-                    }
-                    None => {
-                        //println!("Receiver does not have any pushers.")
-                    },
-                }
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;*/
-    };
-
-    /*
+        let start_time_of_handled_msg: u128 = 0;//TODO:should be hash map<stream_id, timestamp>
         loop{
-            
-            let res = tokio::select!{
-                Some(res) = self.stream0.next() =>{
-                    println!("receive from stream0");
-                    res
-                },
-                Some(res) = self.stream1.next() =>{
-                    println!("receive from stream1");
-                    res  
-                },
-            };
-            
-            match res {
-                    // Push the message to the listening operator executors.
-                    Ok(msg) => {
-                        // Update pushers before we send the message.
-                        // Note: we may want to update the pushers less frequently.
-                        self.update_pushers().await;
-                        // Send the message.
-                        let (metadata, bytes) = match msg {
-                            InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
-                            InterProcessMessage::Deserialized {
-                                metadata: _,
-                                data: _,
-                            } => unreachable!(),
-                        };
-                        match self.stream_id_to_pusher.get_mut(&metadata.stream_id) {
-                            Some(pusher) => {
-                                if let Err(e) = pusher.send_from_bytes(bytes) {
-                                    return Err(e);
-                                }
-                            }
-                            None => panic!(
-                                "Receiver does not have any pushers. \
-                                 Race condition during data-flow reconfiguration."
-                            ),
-                        }
+            tokio::select! {
+                Some(communication_deadline) = deadline_queue_rx.receive() =>{// stage 1 should never run this
+                    //should only happen in Stage::ResponseReceived, every msg will cause this
+                    if communication_deadline.start_timestamp > start_time_of_handled_msg{// the response of this deadline is received
+
                     }
-                    Err(e) => return Err(CommunicationError::from(e)),
-                }
-            }*/
+                    tracing::info!("deadline alarmed for stream:{} began at time:{}",communication_deadline.stream_id,communication_deadline.start_timestamp);
+                    //run the handler
+                },
+                Some(msg) = mrx.recv().await =>{
+                    while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
+                        stream_id_to_pusher.insert(stream_id, pusher);
+                    }
+                    let (metadata, bytes) = match msg{
+                        InterProcessMessage::Serialized { metadata, bytes } => (metadata, bytes),
+                        InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
+                    };
+                    metadata.timestamp_3 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
+                    tracing::info!("receive msg metadata:{},",metadata.stream_id);
+                    start_time_of_handled_msg = metadata.timestamp_0;
+                    match stream_id_to_pusher.get_mut(&metadata.stream_id) {
+                        Some(pusher) => {
+                            if let Err(e) = pusher.send_from_bytes(bytes) {
+                                panic!("pusher send_from_bytes error")
+                            }
+                        }
+                        None => {
+                            println!("Receiver does not have any pushers.")
+                        },
+                    }
+                },
+                else => break,
+            }
+        }
+    };
             let tuple = future::join3(handle0, handle1, handle2);
             tuple.await;
             Ok(())

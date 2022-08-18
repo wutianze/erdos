@@ -24,6 +24,7 @@ mod endpoints;
 mod errors;
 mod message_codec;
 mod serializable;
+mod communication_deadline;
 
 // Crate-wide visible submodules
 pub(crate) mod pusher;
@@ -32,6 +33,7 @@ pub(crate) mod senders;
 
 // Private imports
 use serializable::Serializable;
+use communication_deadline::CommunicationDeadline;
 
 // Module-wide exports
 pub(crate) use control_message_codec::ControlMessageCodec;
@@ -55,11 +57,23 @@ pub enum ControlMessage {
     ControlReceiverInitialized(NodeId),
 }
 
+pub enum Stage{
+    RequestSend,
+    RequestReceived,
+    ResponseSend,
+    ResponseReceived,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageMetadata {
     pub stream_id: StreamId,
-    pub device_index: u8,
-    pub timestamp_0: u64,//the time this msg is generated
+    pub stage: Stage,
+    pub device: u8,// 0 or 1
+    pub expected_deadline: u16,
+    pub timestamp_0: u64,//the time this msg is sent from source
+    pub timestamp_1: u64,//the time this msg is received in other node
+    pub timestamp_2: u64,//the time this msg is sent from the other node
+    pub timestamp_3: u64,//the time this msg is received in this node
 }
 
 #[derive(Clone)]
@@ -84,7 +98,7 @@ impl InterProcessMessage {
         stream_id: StreamId,
     ) -> Self {
         Self::Deserialized {
-            metadata: MessageMetadata { stream_id, device_index:1, timestamp_0:0},//we will fill device_index in senders.rs
+            metadata: MessageMetadata { stream_id, stage:Stage::RequestSend, device:0, expected_deadline:0, timestamp_0:0, timestamp_1: 0, timestamp_2: 0, timestamp_3: 0 },//we will fill device_index in senders.rs
             data,
         }
     }
@@ -92,11 +106,16 @@ impl InterProcessMessage {
     pub fn new_deserialized_dual(
         data: Arc<dyn Serializable + Send + Sync>,
         stream_id: StreamId,
-        device_index: u8,
-        timestamp_0: u64,
+        stage: Stage,
+        device: u8,
+        expected_deadline: u16,
+        timestamp_0: u128,
+        timestamp_1: u128,
+        timestamp_2: u128,
+        timestamp_3: u128,
     ) -> Self {
         Self::Deserialized {
-            metadata: MessageMetadata { stream_id, device_index, timestamp_0},
+            metadata: MessageMetadata { stream_id, stage, device, expected_deadline, timestamp_0, timestamp_1, timestamp_2, timestamp_3 },
             data,
         }
     }

@@ -1,6 +1,6 @@
 use futures::{future, stream::SplitSink};
 use futures_util::sink::SinkExt;
-use std::sync::Arc;
+use std::{sync::Arc, time::{self, Duration}};
 use tokio::{
     self,
     net::TcpStream,
@@ -13,10 +13,14 @@ use tokio_util::codec::Framed;
 
 use crate::communication::{
     CommunicationError, ControlMessage, ControlMessageCodec, ControlMessageHandler,
-    InterProcessMessage, MessageCodec,
+    InterProcessMessage, MessageCodec, CommunicationDeadline,
 };
 use crate::node::NodeId;
 use crate::scheduler::endpoints_manager::ChannelsToSenders;
+
+use super::receivers::DataReceiver;
+
+use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue, Receiver};
 
 #[allow(dead_code)]
 /// The [`DataSender`] pulls messages from a FIFO inter-thread channel.
@@ -34,6 +38,7 @@ pub(crate) struct DataSender {
     control_tx: UnboundedSender<ControlMessage>,
     /// Tokio channel receiver from `ControlMessageHandler`.
     control_rx: UnboundedReceiver<ControlMessage>,
+    deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>,
 }
 
 impl DataSender {
@@ -43,6 +48,7 @@ impl DataSender {
         sink1: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
         channels_to_senders: Arc<Mutex<ChannelsToSenders>>,
         control_handler: &mut ControlMessageHandler,
+        deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>
     ) -> Self {
         // Create a channel for this stream.
         let (tx, rx) = mpsc::unbounded_channel();
@@ -58,6 +64,7 @@ impl DataSender {
             rx,
             control_tx: control_handler.get_channel_to_handler(),
             control_rx,
+            deadline_queue,
         }
     }
 
@@ -74,13 +81,24 @@ impl DataSender {
                     match msg{
                         InterProcessMessage::Serialized {metadata:_,bytes:_ } => unreachable!(),
                         InterProcessMessage::Deserialized { ref metadata, ref data } => {
-                        if let Err(e) = self.sink0.send(InterProcessMessage::new_deserialized_dual(data.clone(), metadata.stream_id, 0,)).await.map_err(CommunicationError::from) {
-                            return Err(e);
-                        }//this msg is device0
-                        if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
-                            return Err(e);
-                        }               
-                        //may need to use join if sink.send doesnt return instantly,TODO
+                            match metadata.stage{
+                                Stage::RequestSend=>{
+                                    metadata.timestamp_0 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
+                                    self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(metadata.expected_deadline.clone()));
+                                    metadata.stage = Stage::RequestReceived;
+                                    if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
+                                        return Err(e);
+                                    }//this msg is device0
+                                    if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
+                                        return Err(e);
+                                    }
+                                },
+                                _ =>{
+                                    println!("wrong Stage code in msg");
+                                    unreachable!();
+                                }
+                            }
+                            //may need to use join if sink.send doesnt return instantly,TODO
                         },
                     }
                 }

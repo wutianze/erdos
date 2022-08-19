@@ -3,7 +3,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use erdos::{
     dataflow::{
         context::SinkContext,
-        operator::{Sink, Source},
+        operator::{Sink, Source, ExtendInfo},
         //operators::{Filter, Join, Map, Split},
         state::TimeVersionedState,
         stream::{WriteStream, WriteStreamT},
@@ -27,7 +27,7 @@ impl Source<usize> for SourceOperator {
         for t in 0..3 {
             let timestamp = Timestamp::Time(vec![t as u64]);
             write_stream
-                .send(Message::new_message(timestamp.clone(), t))
+                .send(Message::new_extendmessage(timestamp.clone(), ExtendInfo::new(10, 0, 0, 0, 0), t))
                 .unwrap();
             write_stream
                 .send(Message::new_watermark(timestamp))
@@ -50,13 +50,14 @@ impl SinkOperator {
 }
 
 impl Sink<TimeVersionedState<usize>, usize> for SinkOperator {
-    fn on_data(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, data: &usize) {
+    fn on_extenddata(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, extend_info:&mut ExtendInfo,data: &usize) {
         let timestamp = ctx.timestamp().clone();
         tracing::info!(
-            "{} @ {:?}: Received {}",
+            "{} @ {:?}: Received {}, extend_info {}",
             ctx.operator_config().get_name(),
             timestamp,
             data,
+            extend_info,
         );
 
         // Increment the message count.

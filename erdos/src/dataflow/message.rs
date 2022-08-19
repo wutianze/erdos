@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::dataflow::time::Timestamp;
 
+use super::operator::ExtendInfo;
+
 /// Trait for valid message data. The data must be clonable, sendable between threads and
 /// serializable.
 // TODO: somehow add the deserialize requirement.
@@ -20,6 +22,7 @@ impl<T> Data for T where
 pub enum Message<D: Data> {
     TimestampedData(TimestampedData<D>),
     Watermark(Timestamp),
+    ExtendTimestampedData(ExtendTimestampedData<D>),
 }
 
 impl<D: Data> Message<D> {
@@ -33,6 +36,11 @@ impl<D: Data> Message<D> {
         Self::Watermark(timestamp)
     }
 
+    /// Creates a new `ExtendTimestampedData` message"
+    pub fn new_extendmessage(timestamp: Timestamp, extend_info: ExtendInfo, data: D) -> Message<D>{
+        Self::ExtendTimestampedData(ExtendTimestampedData::new(timestamp, extend_info, data))
+    }
+
     pub fn is_top_watermark(&self) -> bool {
         if let Self::Watermark(t) = self {
             t.is_top()
@@ -44,6 +52,14 @@ impl<D: Data> Message<D> {
     pub fn data(&self) -> Option<&D> {
         match self {
             Self::TimestampedData(d) => Some(&d.data),
+            //Self::ExtendTimestampedData(d) => Some(&d.data),
+            _ => None,
+        }
+    }
+    
+    pub fn extend_info(&self) -> Option<&ExtendInfo> {
+        match self {
+            Self::ExtendTimestampedData(d) => Some(&d.extend_info),
             _ => None,
         }
     }
@@ -52,6 +68,7 @@ impl<D: Data> Message<D> {
         match self {
             Self::TimestampedData(d) => &d.timestamp,
             Self::Watermark(t) => t,
+            Self::ExtendTimestampedData(d) => &d.timestamp,
         }
     }
 }
@@ -82,6 +99,28 @@ impl<D: Data> TimestampedData<D> {
 }
 
 impl<D: Data + PartialEq> PartialEq for TimestampedData<D> {
+    fn eq(&self, other: &Self) -> bool {
+        self.timestamp == other.timestamp && self.data == other.data
+    }
+}
+
+/// Data message which operators send along streams with more communication info.
+#[derive(Debug, Clone, Serialize, Deserialize, Abomonation)]
+pub struct ExtendTimestampedData<D: Data> {
+    /// Timestamp of the message.
+    pub timestamp: Timestamp,
+    pub extend_info: ExtendInfo,
+    /// Data is an option in case one wants to send null messages.
+    pub data: D,
+}
+
+impl<D: Data> ExtendTimestampedData<D> {
+    pub fn new(timestamp: Timestamp, extend_info:ExtendInfo, data: D) -> Self {
+        Self { timestamp, extend_info, data }
+    }
+}
+
+impl<D: Data + PartialEq> PartialEq for ExtendTimestampedData<D> {
     fn eq(&self, other: &Self) -> bool {
         self.timestamp == other.timestamp && self.data == other.data
     }

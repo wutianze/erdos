@@ -115,8 +115,6 @@ impl DataReceiver {
                     if let Err(e) = tx.send(msg).await {
                         panic!("stream0 send msg fail")
                     }
-                        //let mut msg_tmp = msg0.lock().unwrap();
-                        //*msg_tmp = msg;
                     }
                 Err(e) => panic!("DataReceiver receives an Error and panic"),
                 }
@@ -131,8 +129,6 @@ impl DataReceiver {
                     if let Err(e) = tx2.send(msg).await {
                         panic!("stream0 send msg fail")
                     }
-                        //let mut msg_tmp = msg1.lock().unwrap();
-                        //*msg_tmp = msg;
                     }
                 Err(e) => panic!("DataReceiver receives an Error and panic"),
                 }

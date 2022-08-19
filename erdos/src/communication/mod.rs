@@ -70,10 +70,10 @@ pub struct MessageMetadata {
     pub stage: Stage,
     pub device: u8,// 0 or 1
     pub expected_deadline: u16,
-    pub timestamp_0: u64,//the time this msg is sent from source
-    pub timestamp_1: u64,//the time this msg is received in other node
-    pub timestamp_2: u64,//the time this msg is sent from the other node
-    pub timestamp_3: u64,//the time this msg is received in this node
+    pub timestamp_0: u128,//the time this msg is sent from source
+    pub timestamp_1: u128,//the time this msg is received in other node
+    pub timestamp_2: u128,//the time this msg is sent from the other node
+    pub timestamp_3: u128,//the time this msg is received in this node
 }
 
 #[derive(Clone)]

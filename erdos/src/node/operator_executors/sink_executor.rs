@@ -257,8 +257,9 @@ where
                 let mut mutable_operator = operator.lock().unwrap();
                 let mut mutable_state = state.lock().unwrap();
 
-                mutable_operator.on_data(
+                mutable_operator.on_extenddata(
                     &mut SinkContext::new(time, config, &mut mutable_state),
+                    msg.extend_info().unwrap(),
                     msg.data().unwrap(),
                 )
             },

@@ -12,7 +12,7 @@ use crate::{
         serializable::{Deserializable, DeserializedMessage, Serializable},
         CommunicationError, SendEndpoint,
     },
-    dataflow::Data,
+    dataflow::{Data,Message},
 };
 
 /// Trait used to deserialize a message and send it on a collection of [`SendEndpoint`]s
@@ -27,24 +27,24 @@ pub trait PusherT: Send {
 
 /// Internal structure used to send data on a collection of [`SendEndpoint`]s.
 #[derive(Clone)]
-pub struct Pusher<D: Debug + Clone + Send> {
+pub struct Pusher<D: Data + Deserializable> {
     // TODO: We might want to order the endpoints by the priority of their tasks.
     endpoints: Vec<SendEndpoint<D>>,
 }
 
 /// Zero-copy implementation of the pusher.
-impl<D: 'static + Serializable + Send + Sync + Debug> Pusher<Arc<D>> {
+impl<D: Data + Deserialize> Pusher<Arc<Message<D>>> {
     pub fn new() -> Self {
         Self {
             endpoints: Vec::new(),
         }
     }
 
-    pub fn add_endpoint(&mut self, endpoint: SendEndpoint<Arc<D>>) {
+    pub fn add_endpoint(&mut self, endpoint: SendEndpoint<Arc<Message<D>>>) {
         self.endpoints.push(endpoint);
     }
 
-    pub fn send(&mut self, msg: Arc<D>) -> Result<(), CommunicationError> {
+    pub fn send(&mut self, msg: Arc<Message<D>>) -> Result<(), CommunicationError> {
         for endpoint in self.endpoints.iter_mut() {
             endpoint.send(Arc::clone(&msg))?;
         }
@@ -60,7 +60,7 @@ impl Clone for Box<dyn PusherT> {
 }
 
 /// The [`PusherT`] trait is implemented only for the [`Data`] pushers.
-impl<D> PusherT for Pusher<Arc<D>>
+impl<D> PusherT for Pusher<Arc<Message<D>>>
 where
     for<'de> D: Data + Deserialize<'de>,
 {
@@ -74,9 +74,9 @@ where
 
     fn send_from_bytes(&mut self, mut buf: BytesMut) -> Result<(), CommunicationError> {
         if !self.endpoints.is_empty() {
-            let msg = match Deserializable::decode(&mut buf)? {
-                DeserializedMessage::<D>::Owned(msg) => msg,
-                DeserializedMessage::<D>::Ref(msg) => msg.clone(),
+            let msg = match Deserializable::decode(&mut buf)? {//TODO,maybe wrong
+                DeserializedMessage::<Message<D>>::Owned(msg) => msg,
+                DeserializedMessage::<Message<D>>::Ref(msg) => msg.clone(),
             };
             let msg_arc = Arc::new(msg);
             self.send(msg_arc)?;

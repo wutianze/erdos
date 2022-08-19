@@ -1,3 +1,10 @@
+/*
+ * @Description: 
+ * @Author: Sauron
+ * @Date: 2022-08-19 21:00:40
+ * @LastEditTime: 2022-08-19 21:31:58
+ * @LastEditors: Sauron
+ */
 use std::{fmt::Debug, sync::Arc};
 
 use futures::FutureExt;
@@ -6,6 +13,7 @@ use tokio::{sync::mpsc, task::unconstrained};
 use crate::{
     communication::{CommunicationError, InterProcessMessage, Serializable, TryRecvError},
     dataflow::stream::StreamId,
+    dataflow::{Data,Message},
 };
 
 /// Endpoint to be used to send messages between operators.
@@ -21,16 +29,22 @@ pub enum SendEndpoint<D: Clone + Send + Debug> {
 
 /// Zero-copy implementation of the endpoint.
 /// Because we [`Arc`], the message isn't copied when sent between endpoints within the node.
-impl<D: 'static + Serializable + Send + Sync + Debug> SendEndpoint<Arc<D>> {
+impl<D: Data + Deserialize> SendEndpoint<Arc<Message<D>>> {
     pub fn send(&mut self, msg: Arc<Message<D>>) -> Result<(), CommunicationError> {
         match self {
             Self::InterThread(sender) => sender.send(msg).map_err(CommunicationError::from),
             Self::InterProcess(stream_id, sender) => {
-                match msg{
-                    
-                }
-                sender
-                .send(InterProcessMessage::new_deserialized_dual(msg, *stream_id))//stream_id
+            let inter_process_msg = match msg{
+                Message::TimestampedData(_) | Watermark(_)=> {
+                    InterProcessMessage::new_deserialized(data, stream_id)
+                },
+                Message::ExtendTimestampedData(extend_data) => {
+                    let extend_info = extend_data.extend_info().unwrap();
+                    InterProcessMessage::new_deserialized_dual(msg, stream_id, 0, 0, extend_info.expected_deadline, extend_info.timestamp_0, extend_info.timestamp_1, extend_info.timestamp_2, extend_info.timestamp_3)
+                },
+            };
+            sender
+                .send(inter_process_msg)//stream_id
                 .map_err(CommunicationError::from)
             },
         }

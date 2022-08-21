@@ -1,3 +1,10 @@
+/*
+ * @Description: 
+ * @Author: Sauron
+ * @Date: 2022-08-19 21:00:40
+ * @LastEditTime: 2022-08-21 19:28:32
+ * @LastEditors: Sauron
+ */
 use std::{
     any::Any,
     fmt::{self, Debug},
@@ -17,23 +24,24 @@ use crate::{
 
 /// Trait used to deserialize a message and send it on a collection of [`SendEndpoint`]s
 /// without exposing the message's type to owner of the [`PusherT`] trait object.
-pub trait PusherT: Send {
+pub trait PusherT<'a,D: Data + Deserialize<'a>>: Send {
     fn as_any(&mut self) -> &mut dyn Any;
     /// To be used to clone a boxed pusher.
     fn box_clone(&self) -> Box<dyn PusherT>;
-    /// Creates message from bytes and sends it to endpoints.
-    fn send_from_bytes(&mut self, buf: BytesMut) -> Result<(), CommunicationError>;
+    // Creates message from bytes and sends it to endpoints.
+    //fn send_from_bytes(&mut self, buf: BytesMut) -> Result<(), CommunicationError>;
+    fn msg_from_bytes(&mut self, mut buf: BytesMut) -> Option<Message<D>>;
 }
 
 /// Internal structure used to send data on a collection of [`SendEndpoint`]s.
 #[derive(Clone)]
-pub struct Pusher<D: Data + Deserializable> {
+pub struct Pusher<D: Debug + Clone + Send> {
     // TODO: We might want to order the endpoints by the priority of their tasks.
     endpoints: Vec<SendEndpoint<D>>,
 }
 
 /// Zero-copy implementation of the pusher.
-impl<D: Data + Deserialize> Pusher<Arc<Message<D>>> {
+impl<'a,D: Data + Deserialize<'a>> Pusher<Arc<Message<D>>> {
     pub fn new() -> Self {
         Self {
             endpoints: Vec::new(),
@@ -50,6 +58,7 @@ impl<D: Data + Deserialize> Pusher<Arc<Message<D>>> {
         }
         Ok(())
     }
+
 }
 
 impl Clone for Box<dyn PusherT> {
@@ -71,7 +80,19 @@ where
     fn box_clone(&self) -> Box<dyn PusherT> {
         Box::new((*self).clone())
     }
-
+    
+    
+    fn msg_from_bytes(&mut self, mut buf: BytesMut) -> Option<Message<D>> {
+        if !self.endpoints.is_empty() {
+            let msg = match Deserializable::decode(&mut buf)? {//TODO,maybe wrong
+                DeserializedMessage::<Message<D>>::Owned(msg) => msg,
+                DeserializedMessage::<Message<D>>::Ref(msg) => msg.clone(),
+            };
+            Option::Some(msg)
+        }
+        None
+    }
+    /*
     fn send_from_bytes(&mut self, mut buf: BytesMut) -> Result<(), CommunicationError> {
         if !self.endpoints.is_empty() {
             let msg = match Deserializable::decode(&mut buf)? {//TODO,maybe wrong
@@ -82,7 +103,7 @@ where
             self.send(msg_arc)?;
         }
         Ok(())
-    }
+    }*/
 }
 
 impl fmt::Debug for Box<dyn PusherT> {

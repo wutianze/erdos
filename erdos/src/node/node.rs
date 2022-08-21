@@ -30,7 +30,7 @@ use crate::{
     dataflow::graph::AbstractGraph,
 };
 
-use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue, Receiver};
+use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue};
 use super::worker::Worker;
 
 /// Unique index for a [`Node`].

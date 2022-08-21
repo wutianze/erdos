@@ -13,7 +13,7 @@ use tokio_util::codec::Framed;
 
 use crate::communication::{
     CommunicationError, ControlMessage, ControlMessageCodec, ControlMessageHandler,
-    InterProcessMessage, MessageCodec, CommunicationDeadline,
+    InterProcessMessage, MessageCodec, CommunicationDeadline, Stage,
 };
 use crate::node::NodeId;
 use crate::scheduler::endpoints_manager::ChannelsToSenders;
@@ -38,7 +38,7 @@ pub(crate) struct DataSender {
     control_tx: UnboundedSender<ControlMessage>,
     /// Tokio channel receiver from `ControlMessageHandler`.
     control_rx: UnboundedReceiver<ControlMessage>,
-    deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>,
+    deadline_queue: DelayQueue<CommunicationDeadline, futures_intrusive::buffer::GrowingHeapBuf<CommunicationDeadline>>,
 }
 
 impl DataSender {
@@ -48,7 +48,7 @@ impl DataSender {
         sink1: SplitSink<Framed<TcpStream, MessageCodec>, InterProcessMessage>,
         channels_to_senders: Arc<Mutex<ChannelsToSenders>>,
         control_handler: &mut ControlMessageHandler,
-        deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>
+        deadline_queue: DelayQueue<CommunicationDeadline, futures_intrusive::buffer::GrowingHeapBuf<CommunicationDeadline>>
     ) -> Self {
         // Create a channel for this stream.
         let (tx, rx) = mpsc::unbounded_channel();
@@ -83,6 +83,7 @@ impl DataSender {
                         InterProcessMessage::Deserialized { ref metadata, ref data } => {
                             match metadata.stage{
                                 Stage::RequestSend=>{
+                                    
                                     metadata.timestamp_0 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
                                     self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(metadata.expected_deadline.clone()));
                                     metadata.stage = Stage::RequestReceived;

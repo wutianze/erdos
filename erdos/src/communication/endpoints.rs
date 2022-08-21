@@ -2,7 +2,7 @@
  * @Description: 
  * @Author: Sauron
  * @Date: 2022-08-19 21:00:40
- * @LastEditTime: 2022-08-19 21:31:58
+ * @LastEditTime: 2022-08-21 19:00:12
  * @LastEditors: Sauron
  */
 use std::{fmt::Debug, sync::Arc};
@@ -15,6 +15,9 @@ use crate::{
     dataflow::stream::StreamId,
     dataflow::{Data,Message},
 };
+
+use abomonation_derive::Abomonation;
+use serde::{Deserialize, Serialize};
 
 /// Endpoint to be used to send messages between operators.
 #[derive(Clone)]
@@ -29,14 +32,14 @@ pub enum SendEndpoint<D: Clone + Send + Debug> {
 
 /// Zero-copy implementation of the endpoint.
 /// Because we [`Arc`], the message isn't copied when sent between endpoints within the node.
-impl<D: Data + Deserialize> SendEndpoint<Arc<Message<D>>> {
+impl<'a,D: Data + Deserialize<'a>> SendEndpoint<Arc<Message<D>>> {
     pub fn send(&mut self, msg: Arc<Message<D>>) -> Result<(), CommunicationError> {
         match self {
             Self::InterThread(sender) => sender.send(msg).map_err(CommunicationError::from),
             Self::InterProcess(stream_id, sender) => {
             let inter_process_msg = match msg{
-                Message::TimestampedData(_) | Watermark(_)=> {
-                    InterProcessMessage::new_deserialized(data, stream_id)
+                Message::TimestampedData(_) | Message::Watermark(_)=> {
+                    InterProcessMessage::new_deserialized(msg, stream_id)
                 },
                 Message::ExtendTimestampedData(extend_data) => {
                     let extend_info = extend_data.extend_info().unwrap();

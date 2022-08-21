@@ -10,6 +10,10 @@ use tokio::{
         Mutex,
     },
 };
+
+
+use abomonation_derive::Abomonation;
+use serde::{Deserialize, Serialize};
 use tokio_util::codec::Framed;
 
 use crate::{
@@ -18,12 +22,13 @@ use crate::{
         InterProcessMessage, MessageCodec, PusherT,
     },
     dataflow::stream::StreamId,
+    dataflow::Message,
     node::NodeId,
     scheduler::endpoints_manager::ChannelsToReceivers,
 };
 
 use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue, Receiver};
-use super::{MessageMetadata, communication_deadline::CommunicationDeadline};
+use super::{MessageMetadata, Stage, communication_deadline::CommunicationDeadline};
 
 pub struct ServerTimeInfo{
     start_time_of_handled_msg: u128,
@@ -60,7 +65,7 @@ pub(crate) struct DataReceiver {
     /// Tokio channel receiver from `ControlMessageHandler`.
     control_rx: UnboundedReceiver<ControlMessage>,
 
-    deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>,
+    deadline_queue: DelayQueue<CommunicationDeadline, futures_intrusive::buffer::GrowingHeapBuf<CommunicationDeadline>>,
     deadline_queue_rx: Receiver<CommunicationDeadline>,
 }
 
@@ -71,7 +76,7 @@ impl DataReceiver {
         stream1: SplitStream<Framed<TcpStream, MessageCodec>>,
         channels_to_receivers: Arc<Mutex<ChannelsToReceivers>>,
         control_handler: &mut ControlMessageHandler,
-        deadline_queue: DelayQueue<CommunicationDeadline, GrowingHeapBuf<CommunicationDeadline>>,
+        deadline_queue: DelayQueue<CommunicationDeadline, futures_intrusive::buffer::GrowingHeapBuf<CommunicationDeadline>>,
         deadline_queue_rx: Receiver<CommunicationDeadline>,
     ) -> Self {
         // Create a channel for this stream.
@@ -144,13 +149,15 @@ impl DataReceiver {
             tokio::select! {
                 Some(communication_deadline) = deadline_queue_rx.receive() =>{// stage 1 should never run this
                     //should only happen in Stage::ResponseReceived, every msg will cause this
+                    continue;
+                    /* 
                     if communication_deadline.start_timestamp > start_time_of_handled_msg{// the response of this deadline is received
                         continue;
                     }else{
                         tracing::warn!("deadline alarmed for stream:{} began at time:{}",communication_deadline.stream_id,communication_deadline.start_timestamp);
                         start_time_of_handled_msg = communication_deadline.start_timestamp;
                         //run the handler
-                    }
+                    }*/
                 },
                 Some(msg) = mrx.recv().await =>{
                     while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
@@ -163,39 +170,52 @@ impl DataReceiver {
                     
                     tracing::info!("receive msg metadata:{},",metadata.stream_id);
 
-                    let piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.stream_id, metadata.timestamp_1, metadata.timestamp_2));
+                    let piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.timestamp_0,metadata.timestamp_1, metadata.timestamp_2));
                     match metadata.stage{
                         Stage::RequestReceived =>{
-                            metadata.timestamp_1 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
+                            metadata.timestamp_1 = tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
                         },
                         Stage::ResponseReceived =>{
-                            metadata.timestamp_3 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
+                            metadata.timestamp_3 = tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
                         },
-                        else =>{
+                        _ =>{
                             panic!("DataReceiver received msg with wrong Stage");
                         }
                     }
-                    if metadata.timestamp_0 < *piece_info.start_time_of_handled_msg{
+                    if metadata.timestamp_0 < piece_info.start_time_of_handled_msg{
                         //todo: do sth to update the server_info
                         continue;//out of date msg
                     }
 
                     //new msg
-                    if metadata.device == 0{//we get main msg first, use it directly
-                        *piece_info.start_time_of_handled_msg = metadata.timestamp_0;
-                        *piece_info.timestamp_1 = (metadata.timestamp_1 + piece_info.timestamp_1)/2;
-                        *piece_info.timestamp_2 = (metadata.timestamp_2 + piece_info.timestamp_2)/2;
+                    //if metadata.device == 0{//we get main msg first, use it directly
+                        piece_info.start_time_of_handled_msg = metadata.timestamp_0;
+                        piece_info.timestamp_1 = (metadata.timestamp_1 + piece_info.timestamp_1)/2;
+                        piece_info.timestamp_2 = (metadata.timestamp_2 + piece_info.timestamp_2)/2;
                         match stream_id_to_pusher.get_mut(&metadata.stream_id) {
                             Some(pusher) => {
-                                if let Err(e) = pusher.send_from_bytes(bytes) {
+                                let mut msg_data = pusher.msg_from_bytes(&mut bytes).unwrap();
+                                let msg_arc = match msg_data{
+                                    Message::TimestampedData(_) | Message::Watermark(_)=> {
+                                        Arc::new(msg_data)
+                                    },
+                                    Message::ExtendTimestampedData(extend_data) => {
+                                        let mut extend_info = extend_data.extend_info().unwrap();
+                                        extend_info.timestamp_0 = metadata.timestamp_0;
+                                        Arc::new(msg_data)
+                                    },
+                                    None =>panic!("cannot decode in DataReceiver"),
+                                };
+                                pusher.send(msg_arc);
+                                /*if let Err(e) = pusher.send_from_bytes(bytes) {
                                     panic!("pusher send_from_bytes error")
-                                }
+                                }*/
                             }
                             None => {
                                 println!("Receiver does not have any pushers.")
                             },
                         }   
-                    }
+                    //}
                     
                 },
                 else => break,

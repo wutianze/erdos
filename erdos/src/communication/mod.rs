@@ -57,6 +57,7 @@ pub enum ControlMessage {
     ControlReceiverInitialized(NodeId),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Stage{
     RequestSend,
     RequestReceived,

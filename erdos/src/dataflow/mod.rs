@@ -1,3 +1,10 @@
+/*
+ * @Description: 
+ * @Author: Sauron
+ * @Date: 2022-06-11 17:17:22
+ * @LastEditTime: 2022-08-21 18:10:58
+ * @LastEditors: Sauron
+ */
 //! Functions and structures for building an ERDOS application.
 
 // Public submodules
@@ -14,7 +21,7 @@ pub mod time;
 
 // Public exports
 pub use deadlines::TimestampDeadline;
-pub use message::{Data, Message, TimestampedData};
+pub use message::{Data, Message, TimestampedData, ExtendInfo, ExtendTimestampedData};
 pub use operator::OperatorConfig;
 pub use state::{AppendableState, State};
 pub use stream::{LoopStream, ReadStream, Stream, WriteStream};

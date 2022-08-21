@@ -1,25 +1,10 @@
 use serde::Deserialize;
 
 use crate::{
-    dataflow::{context::*, AppendableState, Data, ReadStream, State, WriteStream},
+    dataflow::{context::*, AppendableState, Data, ReadStream, State, WriteStream,ExtendInfo},
     node::NodeId,
     OperatorId,
 };
-
-#[derive(Clone, Debug, Serialize, Deserialize, Abomonation)]
-pub struct ExtendInfo{
-    pub expected_deadline: u16,
-    pub timestamp_0: u128,//the time this msg is sent from source
-    pub timestamp_1: u128,//the time this msg is received in other node
-    pub timestamp_2: u128,//the time this msg is sent from the other node
-    pub timestamp_3: u128,//the time this msg is received in this node
-}
-
-impl ExtendInfo {
-    pub fn new(expected_deadline:u16, timestamp_0: u128, timestamp_1: u128, timestamp_2:u128, timestamp_3:u128 ) -> Self {
-        Self { expected_deadline, timestamp_0, timestamp_1, timestamp_2, timestamp_3 }
-    }
-}
 
 /*************************************************************************************************
  * Source: sends data with type T                                                                *

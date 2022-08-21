@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::dataflow::time::Timestamp;
 
-use super::operator::ExtendInfo;
-
 /// Trait for valid message data. The data must be clonable, sendable between threads and
 /// serializable.
 // TODO: somehow add the deserialize requirement.
@@ -15,6 +13,21 @@ pub trait Data: 'static + Clone + Send + Sync + Debug + Serialize {}
 impl<T> Data for T where
     for<'a> T: 'static + Clone + Send + Sync + Debug + Serialize + Deserialize<'a>
 {
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Abomonation)]
+pub struct ExtendInfo{
+    pub expected_deadline: u16,
+    pub timestamp_0: u128,//the time this msg is sent from source
+    pub timestamp_1: u128,//the time this msg is received in other node
+    pub timestamp_2: u128,//the time this msg is sent from the other node
+    pub timestamp_3: u128,//the time this msg is received in this node
+}
+
+impl ExtendInfo {
+    pub fn new(expected_deadline:u16, timestamp_0: u128, timestamp_1: u128, timestamp_2:u128, timestamp_3:u128 ) -> Self {
+        Self { expected_deadline, timestamp_0, timestamp_1, timestamp_2, timestamp_3 }
+    }
 }
 
 /// Operators send messages on streams. A message can be either a `Watermark` or a `TimestampedData`.
@@ -52,7 +65,7 @@ impl<D: Data> Message<D> {
     pub fn data(&self) -> Option<&D> {
         match self {
             Self::TimestampedData(d) => Some(&d.data),
-            //Self::ExtendTimestampedData(d) => Some(&d.data),
+            Self::ExtendTimestampedData(d) => Some(&d.data),
             _ => None,
         }
     }

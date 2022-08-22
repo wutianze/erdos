@@ -11,14 +11,12 @@ use futures::FutureExt;
 use tokio::{sync::mpsc, task::unconstrained};
 
 use crate::{
-    communication::{CommunicationError, InterProcessMessage, Serializable, TryRecvError},
+    communication::{CommunicationError, InterProcessMessage,  TryRecvError},
     dataflow::stream::StreamId,
     dataflow::{Data,Message},
 };
 
-use abomonation_derive::Abomonation;
-use serde::{Deserialize, Serialize};
-use super::Stage;
+use super::{MessageMetadata};
 
 /// Endpoint to be used to send messages between operators.
 #[derive(Clone)]
@@ -38,19 +36,21 @@ impl<D: Data> SendEndpoint<Arc<Message<D>>> {
         match self {
             Self::InterThread(sender) => sender.send(msg).map_err(CommunicationError::from),
             Self::InterProcess(stream_id, sender) => {
-            let inter_process_msg = match &*msg{
-                Message::TimestampedData(_) | Message::Watermark(_)=> {
-                    InterProcessMessage::new_deserialized(msg, *stream_id)
-                },
-                Message::ExtendTimestampedData(extend_data) => {
-                    
-                    let extend_info = extend_data.extend_info.clone();
-                    InterProcessMessage::new_deserialized_dual(msg, *stream_id, Stage::RequestSend, 0, extend_info.expected_deadline, extend_info.timestamp_0, extend_info.timestamp_1, extend_info.timestamp_2, extend_info.timestamp_3)
-                },
-            };
-            sender
-                .send(inter_process_msg)//stream_id
+                sender
+                .send(InterProcessMessage::new_deserialized(msg, *stream_id))
                 .map_err(CommunicationError::from)
+            },
+        }
+    }
+
+    pub fn send_dual(&mut self, msg: Arc<Message<D>>, mut metadata:MessageMetadata) -> Result<(), CommunicationError> {
+        match self {
+            Self::InterThread(sender) => sender.send(msg).map_err(CommunicationError::from),
+            Self::InterProcess(stream_id, sender) => {
+                metadata.stream_id = *stream_id;
+                sender
+                    .send(InterProcessMessage::new_deserialized_dual(msg, metadata))//stream_id
+                    .map_err(CommunicationError::from)
             },
         }
     }

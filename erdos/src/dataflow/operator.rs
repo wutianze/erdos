@@ -1,9 +1,9 @@
 use serde::Deserialize;
 
 use crate::{
-    dataflow::{context::*, AppendableState, Data, ReadStream, State, WriteStream,ExtendInfo},
+    dataflow::{context::*, AppendableState, Data, ReadStream, State, WriteStream},
     node::NodeId,
-    OperatorId,
+    OperatorId, communication::MessageMetadata,
 };
 
 /*************************************************************************************************
@@ -75,7 +75,7 @@ pub trait Sink<S: State, T: Data>: Send + Sync {
 
     fn on_data(&mut self, ctx: &mut SinkContext<S>, data: &T);
 
-    fn on_extenddata(&mut self, ctx: &mut SinkContext<S>, extend_info: &ExtendInfo, data: &T);
+    fn on_extenddata(&mut self, ctx: &mut SinkContext<S>, metadata: &MessageMetadata, data: &T);
 
     fn on_watermark(&mut self, ctx: &mut SinkContext<S>);
 }

@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use abomonation_derive::Abomonation;
 use serde::{Deserialize, Serialize};
 
-use crate::dataflow::time::Timestamp;
+use crate::{dataflow::time::Timestamp, communication::MessageMetadata};
 
 /// Trait for valid message data. The data must be clonable, sendable between threads and
 /// serializable.
@@ -15,8 +15,10 @@ impl<T> Data for T where
 {
 }
 
+/*
 #[derive(Clone, Debug, Serialize, Deserialize, Abomonation)]
 pub struct ExtendInfo{
+    pub stage: Stage,
     pub expected_deadline: u16,
     pub timestamp_0: u128,//the time this msg is sent from source
     pub timestamp_1: u128,//the time this msg is received in other node
@@ -25,10 +27,10 @@ pub struct ExtendInfo{
 }
 
 impl ExtendInfo {
-    pub fn new(expected_deadline:u16, timestamp_0: u128, timestamp_1: u128, timestamp_2:u128, timestamp_3:u128 ) -> Self {
-        Self { expected_deadline, timestamp_0, timestamp_1, timestamp_2, timestamp_3 }
+    pub fn new(stage: Stage, expected_deadline:u16, timestamp_0: u128, timestamp_1: u128, timestamp_2:u128, timestamp_3:u128 ) -> Self {
+        Self { stage, expected_deadline, timestamp_0, timestamp_1, timestamp_2, timestamp_3 }
     }
-}
+}*/
 
 /// Operators send messages on streams. A message can be either a `Watermark` or a `TimestampedData`.
 #[derive(Clone, Debug, Serialize, Deserialize, Abomonation)]
@@ -50,8 +52,8 @@ impl<D: Data> Message<D> {
     }
 
     /// Creates a new `ExtendTimestampedData` message"
-    pub fn new_extendmessage(timestamp: Timestamp, extend_info: ExtendInfo, data: D) -> Message<D>{
-        Self::ExtendTimestampedData(ExtendTimestampedData::new(timestamp, extend_info, data))
+    pub fn new_extendmessage(timestamp: Timestamp, metadata: MessageMetadata, data: D) -> Message<D>{
+        Self::ExtendTimestampedData(ExtendTimestampedData::new(timestamp, metadata, data))
     }
 
     pub fn is_top_watermark(&self) -> bool {
@@ -70,9 +72,9 @@ impl<D: Data> Message<D> {
         }
     }
     
-    pub fn extendinfo(&self) -> Option<&ExtendInfo> {
+    pub fn metadata(&self) -> Option<&MessageMetadata> {
         match self {
-            Self::ExtendTimestampedData(d) => Some(&d.extend_info),
+            Self::ExtendTimestampedData(d) => Some(&d.metadata),
             _ => None,
         }
     }
@@ -122,14 +124,14 @@ impl<D: Data + PartialEq> PartialEq for TimestampedData<D> {
 pub struct ExtendTimestampedData<D: Data> {
     /// Timestamp of the message.
     pub timestamp: Timestamp,
-    pub extend_info: ExtendInfo,
+    pub metadata: MessageMetadata,
     /// Data is an option in case one wants to send null messages.
     pub data: D,
 }
 
 impl<D: Data> ExtendTimestampedData<D> {
-    pub fn new(timestamp: Timestamp, extend_info:ExtendInfo, data: D) -> Self {
-        Self { timestamp, extend_info, data }
+    pub fn new(timestamp: Timestamp, metadata:MessageMetadata, data: D) -> Self {
+        Self { timestamp, metadata, data }
     }
 
     /*

@@ -1,6 +1,6 @@
 use futures::{future, stream::SplitSink};
 use futures_util::sink::SinkExt;
-use std::{sync::Arc, time::{self, Duration}};
+use std::{sync::Arc, time::Duration};
 use tokio::{
     self,
     net::TcpStream,
@@ -18,9 +18,7 @@ use crate::communication::{
 use crate::node::NodeId;
 use crate::scheduler::endpoints_manager::ChannelsToSenders;
 
-use super::receivers::DataReceiver;
-
-use futures_delay_queue::{delay_queue, DelayHandle, DelayQueue, Receiver};
+use futures_delay_queue::DelayQueue;
 
 #[allow(dead_code)]
 /// The [`DataSender`] pulls messages from a FIFO inter-thread channel.
@@ -80,9 +78,9 @@ impl DataSender {
                     println!("send sth");
                     match msg{
                         InterProcessMessage::Serialized {metadata:_,bytes:_ } => unreachable!(),
-                        InterProcessMessage::Deserialized { ref mut metadata, ref data } => {
-                            match metadata.stage{
-                                Stage::RequestSend=>{
+                        InterProcessMessage::Deserialized { ref mut metadata, data:_ } => {
+                            match metadata.stage{// stage is given by the application
+                                Stage::RequestSend | Stage::IGNORE=>{
                                     metadata.timestamp_0 = 0;//tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
                                     self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(100));//u64(metadata.expected_deadline.clone()));
                                     metadata.stage = Stage::RequestReceived;
@@ -95,7 +93,7 @@ impl DataSender {
                                 },
                                 _ =>{
                                     println!("wrong Stage code in msg");
-                                    unreachable!();
+                                    //unreachable!();
                                 }
                             }
                             //may need to use join if sink.send doesnt return instantly,TODO

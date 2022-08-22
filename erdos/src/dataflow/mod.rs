@@ -21,7 +21,7 @@ pub mod time;
 
 // Public exports
 pub use deadlines::TimestampDeadline;
-pub use message::{Data, Message, TimestampedData, ExtendInfo, ExtendTimestampedData};
+pub use message::{Data, Message, TimestampedData, ExtendTimestampedData};
 pub use operator::OperatorConfig;
 pub use state::{AppendableState, State};
 pub use stream::{LoopStream, ReadStream, Stream, WriteStream};

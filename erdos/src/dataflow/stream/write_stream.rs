@@ -6,7 +6,7 @@ use std::{
 use serde::Deserialize;
 
 use crate::{
-    communication::{Pusher, SendEndpoint},
+    communication::{Pusher, SendEndpoint, MessageMetadata},
     dataflow::{deadlines::ConditionContext, Data, Message, Timestamp},
 };
 
@@ -209,8 +209,17 @@ impl<'a, D: Data + Deserialize<'a>> WriteStreamT<D> for WriteStream<D> {
 
         // Update the watermark and send the message forward.
         self.update_statistics(&msg)?;
-        let msg_arc = Arc::new(msg);
-        self.pusher.send(msg_arc).map_err(SendError::from)?;
+
+        match msg{
+            Message::ExtendTimestampedData(extend_data) => {
+                let metadata = &extend_data.metadata;
+                self.pusher.send_dual(Arc::new(Message::new_message(extend_data.timestamp, extend_data.data)),MessageMetadata::app_default(metadata.stage, metadata.device, metadata.expected_deadline))?;
+            },
+            _ => {
+                self.pusher.send(Arc::new(msg)).map_err(SendError::from)?;
+            },
+        };
+        //let msg_arc = Arc::new(msg);
 
         // If we received a top watermark, close the stream.
         if close_stream {

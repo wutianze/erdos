@@ -12,15 +12,16 @@ use std::{
 };
 
 use bytes::BytesMut;
-use serde::Deserialize;
 
 use crate::{
     communication::{
-        serializable::{Deserializable, DeserializedMessage, Serializable},
+        serializable::{Deserializable, DeserializedMessage},
         CommunicationError, SendEndpoint,
     },
     dataflow::{Data,Message},
 };
+
+use super::MessageMetadata;
 
 /// Trait used to deserialize a message and send it on a collection of [`SendEndpoint`]s
 /// without exposing the message's type to owner of the [`PusherT`] trait object.
@@ -29,7 +30,7 @@ pub trait PusherT: Send {
     /// To be used to clone a boxed pusher.
     fn box_clone(&self) -> Box<dyn PusherT>;
     /// Creates message from bytes and sends it to endpoints.
-    fn send_from_bytes(&mut self, buf: BytesMut, test_timestamp: u128) -> Result<(), CommunicationError>;
+    fn send_from_bytes(&mut self, buf: BytesMut, metadata: MessageMetadata) -> Result<(), CommunicationError>;
     //fn msg_from_bytes(&mut self, mut buf: BytesMut) -> Option<Message<D>>;
 }
 
@@ -55,6 +56,13 @@ impl<D: Data> Pusher<Arc<Message<D>>> {
     pub fn send(&mut self, msg: Arc<Message<D>>) -> Result<(), CommunicationError> {
         for endpoint in self.endpoints.iter_mut() {
             endpoint.send(Arc::clone(&msg))?;
+        }
+        Ok(())
+    }
+    
+    pub fn send_dual(&mut self, msg: Arc<Message<D>>, metadata:MessageMetadata) -> Result<(), CommunicationError> {
+        for endpoint in self.endpoints.iter_mut() {
+            endpoint.send_dual(Arc::clone(&msg), metadata.clone())?;
         }
         Ok(())
     }
@@ -93,12 +101,32 @@ impl<D:Data> PusherT for Pusher<Arc<Message<D>>>
         None
     }*/
     
-    fn send_from_bytes(&mut self, mut buf: BytesMut,test_timestamp: u128) -> Result<(), CommunicationError> {
+    fn send_from_bytes(&mut self, mut buf: BytesMut,metadata:MessageMetadata) -> Result<(), CommunicationError> {
         if !self.endpoints.is_empty() {
-            let mut msg = match Deserializable::decode(&mut buf)? {//TODO,maybe wrong
+            let msg = match Deserializable::decode(&mut buf)? {//TODO,maybe wrong
                 DeserializedMessage::<Message<D>>::Owned(msg) => msg,
                 DeserializedMessage::<Message<D>>::Ref(msg) => msg.clone(),
             };
+            let msg_arc = match metadata.stage{
+                super::Stage::IGNORE => {
+                    Arc::new(msg)
+                },
+                _ =>{//ExtendTimestampData but as TimestampData
+                    match msg{
+                        Message::TimestampedData(d) => {
+                        Arc::new(Message::new_extendmessage(d.timestamp, metadata, d.data))
+                        },
+                        Message::Watermark(_) => {
+                            Arc::new(msg)
+                        }
+                        _ => {
+                            print!("msg is {:?}",msg);
+                            panic!("received ExtendTimestampData with wrong Message Enum")
+                        },
+                    }
+                },
+            };
+            /*
             let msg_arc = match msg{
                                     Message::TimestampedData(_) | Message::Watermark(_)=> {
                                         Arc::new(msg)
@@ -109,7 +137,7 @@ impl<D:Data> PusherT for Pusher<Arc<Message<D>>>
                                         Arc::new(msg)
                                     },
                                     _ =>unreachable!(),
-                                };
+                                };*/
             //let msg_arc = Arc::new(msg);
             self.send(msg_arc)?;
         }

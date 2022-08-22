@@ -70,7 +70,7 @@ impl<D: Data> Message<D> {
         }
     }
     
-    pub fn extend_info(&self) -> Option<&ExtendInfo> {
+    pub fn extendinfo(&self) -> Option<&ExtendInfo> {
         match self {
             Self::ExtendTimestampedData(d) => Some(&d.extend_info),
             _ => None,
@@ -131,6 +131,11 @@ impl<D: Data> ExtendTimestampedData<D> {
     pub fn new(timestamp: Timestamp, extend_info:ExtendInfo, data: D) -> Self {
         Self { timestamp, extend_info, data }
     }
+
+    /*
+    pub fn extendinfo(&self) -> &'static ExtendInfo {
+        &self.extend_info
+    }*/
 }
 
 impl<D: Data + PartialEq> PartialEq for ExtendTimestampedData<D> {

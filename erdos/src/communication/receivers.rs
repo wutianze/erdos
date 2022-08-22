@@ -65,7 +65,6 @@ pub(crate) struct DataReceiver {
     /// Tokio channel receiver from `ControlMessageHandler`.
     control_rx: UnboundedReceiver<ControlMessage>,
 
-    deadline_queue: DelayQueue<CommunicationDeadline, futures_intrusive::buffer::GrowingHeapBuf<CommunicationDeadline>>,
     deadline_queue_rx: Receiver<CommunicationDeadline>,
 }
 
@@ -76,7 +75,6 @@ impl DataReceiver {
         stream1: SplitStream<Framed<TcpStream, MessageCodec>>,
         channels_to_receivers: Arc<Mutex<ChannelsToReceivers>>,
         control_handler: &mut ControlMessageHandler,
-        deadline_queue: DelayQueue<CommunicationDeadline, futures_intrusive::buffer::GrowingHeapBuf<CommunicationDeadline>>,
         deadline_queue_rx: Receiver<CommunicationDeadline>,
     ) -> Self {
         // Create a channel for this stream.
@@ -94,7 +92,6 @@ impl DataReceiver {
             stream_id_to_pusher: HashMap::new(),
             control_tx: control_handler.get_channel_to_handler(),
             control_rx,
-            deadline_queue,
             deadline_queue_rx,
         }
     }
@@ -159,7 +156,7 @@ impl DataReceiver {
                         //run the handler
                     }*/
                 },
-                Some(msg) = mrx.recv().await =>{
+                Some(msg) = mrx.recv() =>{
                     while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
                         stream_id_to_pusher.insert(stream_id, pusher);
                     }
@@ -173,10 +170,12 @@ impl DataReceiver {
                     let piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.timestamp_0,metadata.timestamp_1, metadata.timestamp_2));
                     match metadata.stage{
                         Stage::RequestReceived =>{
-                            metadata.timestamp_1 = tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
+                            piece_info.timestamp_1 = 0;
+                            //metadata.timestamp_1 = 0;//tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
                         },
                         Stage::ResponseReceived =>{
-                            metadata.timestamp_3 = tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
+                            piece_info.timestamp_1 = 0;
+                            //metadata.timestamp_3 = 0;//tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
                         },
                         _ =>{
                             panic!("DataReceiver received msg with wrong Stage");
@@ -194,6 +193,7 @@ impl DataReceiver {
                         piece_info.timestamp_2 = (metadata.timestamp_2 + piece_info.timestamp_2)/2;
                         match stream_id_to_pusher.get_mut(&metadata.stream_id) {
                             Some(pusher) => {
+                                /*
                                 let mut msg_data = pusher.msg_from_bytes(&mut bytes).unwrap();
                                 let msg_arc = match msg_data{
                                     Message::TimestampedData(_) | Message::Watermark(_)=> {
@@ -206,13 +206,13 @@ impl DataReceiver {
                                     },
                                     None =>panic!("cannot decode in DataReceiver"),
                                 };
-                                pusher.send(msg_arc);
-                                /*if let Err(e) = pusher.send_from_bytes(bytes) {
-                                    panic!("pusher send_from_bytes error")
-                                }*/
+                                pusher.send(msg_arc);*/
+                                if let Err(e) = pusher.send_from_bytes(bytes,metadata.timestamp_0) {
+                                    panic!("pusher send_from_bytes error");
+                                }
                             }
                             None => {
-                                println!("Receiver does not have any pushers.")
+                                println!("Receiver does not have any pushers.");
                             },
                         }   
                     //}

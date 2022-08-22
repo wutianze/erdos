@@ -3,11 +3,12 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use erdos::{
     dataflow::{
         context::SinkContext,
-        operator::{Sink, Source, ExtendInfo},
+        operator::{Sink, Source},
         //operators::{Filter, Join, Map, Split},
         state::TimeVersionedState,
         stream::{WriteStream, WriteStreamT},
         Message, OperatorConfig, Timestamp,
+        message::ExtendInfo,
     },
     node::Node,
     Configuration,
@@ -50,14 +51,27 @@ impl SinkOperator {
 }
 
 impl Sink<TimeVersionedState<usize>, usize> for SinkOperator {
-    fn on_extenddata(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, extend_info:&mut ExtendInfo,data: &usize) {
+    fn on_extenddata(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, extend_info:&ExtendInfo,data: &usize) {
         let timestamp = ctx.timestamp().clone();
         tracing::info!(
-            "{} @ {:?}: Received {}, extend_info {}",
+            "{} @ {:?}: Received on_extenddata {}, extend_info {}",
             ctx.operator_config().get_name(),
             timestamp,
             data,
-            extend_info,
+            extend_info.timestamp_0,
+        );
+
+        // Increment the message count.
+        *ctx.current_state().unwrap() += 1;
+    }
+
+    fn on_data(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, data: &usize) {
+        let timestamp = ctx.timestamp().clone();
+        tracing::info!(
+            "{} @ {:?}: Received on_data {}",
+            ctx.operator_config().get_name(),
+            timestamp,
+            data,
         );
 
         // Increment the message count.

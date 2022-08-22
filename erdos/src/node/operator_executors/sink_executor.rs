@@ -259,7 +259,7 @@ where
 
                 mutable_operator.on_extenddata(
                     &mut SinkContext::new(time, config, &mut mutable_state),
-                    msg.extend_info().unwrap(),
+                    msg.extendinfo().unwrap(),
                     msg.data().unwrap(),
                 )
             },

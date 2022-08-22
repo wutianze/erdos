@@ -76,16 +76,15 @@ impl DataSender {
         // TODO: listen on control_rx?
         loop {
             match self.rx.recv().await {
-                Some(msg) => {
+                Some(mut msg) => {
                     println!("send sth");
                     match msg{
                         InterProcessMessage::Serialized {metadata:_,bytes:_ } => unreachable!(),
-                        InterProcessMessage::Deserialized { ref metadata, ref data } => {
+                        InterProcessMessage::Deserialized { ref mut metadata, ref data } => {
                             match metadata.stage{
                                 Stage::RequestSend=>{
-                                    
-                                    metadata.timestamp_0 = tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
-                                    self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(metadata.expected_deadline.clone()));
+                                    metadata.timestamp_0 = 0;//tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
+                                    self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(100));//u64(metadata.expected_deadline.clone()));
                                     metadata.stage = Stage::RequestReceived;
                                     if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
                                         return Err(e);

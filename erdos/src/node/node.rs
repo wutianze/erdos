@@ -192,7 +192,6 @@ impl Node {
                     split_stream1,
                     self.channels_to_receivers.clone(),
                     &mut self.control_handler,
-                    deadline_queue_tx.clone(),
                     deadline_queue_rx,
                 )
                 .await,

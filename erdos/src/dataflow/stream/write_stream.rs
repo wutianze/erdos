@@ -139,6 +139,16 @@ impl<D: Data> WriteStream<D> {
                     .condition_context
                     .notify_watermark_arrival(self.id(), msg_watermark.clone());
             }
+            Message::ExtendTimestampedData(extend_data) => {
+                let mut stats = self.stats.lock().unwrap();
+                if extend_data.timestamp <= *stats.low_watermark() {
+                    return Err(SendError::TimestampError);
+                }
+                // Increment the message count.
+                stats
+                    .condition_context
+                    .increment_msg_count(self.id(), extend_data.timestamp.clone())
+            },
         }
         Ok(())
     }

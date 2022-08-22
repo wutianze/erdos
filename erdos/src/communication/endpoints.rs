@@ -18,6 +18,7 @@ use crate::{
 
 use abomonation_derive::Abomonation;
 use serde::{Deserialize, Serialize};
+use super::Stage;
 
 /// Endpoint to be used to send messages between operators.
 #[derive(Clone)]
@@ -32,18 +33,19 @@ pub enum SendEndpoint<D: Clone + Send + Debug> {
 
 /// Zero-copy implementation of the endpoint.
 /// Because we [`Arc`], the message isn't copied when sent between endpoints within the node.
-impl<'a,D: Data + Deserialize<'a>> SendEndpoint<Arc<Message<D>>> {
+impl<D: Data> SendEndpoint<Arc<Message<D>>> {
     pub fn send(&mut self, msg: Arc<Message<D>>) -> Result<(), CommunicationError> {
         match self {
             Self::InterThread(sender) => sender.send(msg).map_err(CommunicationError::from),
             Self::InterProcess(stream_id, sender) => {
-            let inter_process_msg = match msg{
+            let inter_process_msg = match &*msg{
                 Message::TimestampedData(_) | Message::Watermark(_)=> {
-                    InterProcessMessage::new_deserialized(msg, stream_id)
+                    InterProcessMessage::new_deserialized(msg, *stream_id)
                 },
                 Message::ExtendTimestampedData(extend_data) => {
-                    let extend_info = extend_data.extend_info().unwrap();
-                    InterProcessMessage::new_deserialized_dual(msg, stream_id, 0, 0, extend_info.expected_deadline, extend_info.timestamp_0, extend_info.timestamp_1, extend_info.timestamp_2, extend_info.timestamp_3)
+                    
+                    let extend_info = extend_data.extend_info.clone();
+                    InterProcessMessage::new_deserialized_dual(msg, *stream_id, Stage::RequestSend, 0, extend_info.expected_deadline, extend_info.timestamp_0, extend_info.timestamp_1, extend_info.timestamp_2, extend_info.timestamp_3)
                 },
             };
             sender

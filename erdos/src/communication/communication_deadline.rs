@@ -1,7 +1,7 @@
 use crate::dataflow::stream::StreamId;
 pub struct CommunicationDeadline{
-	stream_id: StreamId,
-	start_timestamp: u128,
+	pub stream_id: StreamId,
+	pub start_timestamp: u128,
 }
 
 impl CommunicationDeadline{

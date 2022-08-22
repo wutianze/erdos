@@ -60,10 +60,8 @@ pub enum ControlMessage {
 #[derive(Debug, Clone, Copy,Serialize, Deserialize,Abomonation)]
 pub enum Stage{
     IGNORE,
-    RequestSend,
-    RequestReceived,
-    ResponseSend,
-    ResponseReceived,
+    Request,
+    Response,
 }
 
 #[derive(Clone, Debug, Copy, Serialize, Deserialize, Abomonation)]
@@ -71,7 +69,7 @@ pub struct MessageMetadata {
     pub stream_id: StreamId,
     pub stage: Stage,
     pub device: u8,// 0 or 1
-    pub expected_deadline: u16,
+    pub expected_deadline: u64,
     pub timestamp_0: u128,//the time this msg is sent from source
     pub timestamp_1: u128,//the time this msg is received in other node
     pub timestamp_2: u128,//the time this msg is sent from the other node
@@ -79,7 +77,7 @@ pub struct MessageMetadata {
 }
 
 impl MessageMetadata {
-    pub fn app_default(stage: Stage, device: u8, expected_deadline:u16) -> Self{
+    pub fn app_default(stage: Stage, device: u8, expected_deadline:u64) -> Self{
         Self { stream_id:StreamId::nil(), stage, device, expected_deadline, timestamp_0: 0, timestamp_1:0, timestamp_2: 0, timestamp_3: 0 }
     }
     

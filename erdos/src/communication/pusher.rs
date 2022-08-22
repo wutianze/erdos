@@ -126,19 +126,6 @@ impl<D:Data> PusherT for Pusher<Arc<Message<D>>>
                     }
                 },
             };
-            /*
-            let msg_arc = match msg{
-                                    Message::TimestampedData(_) | Message::Watermark(_)=> {
-                                        Arc::new(msg)
-                                    },
-                                    Message::ExtendTimestampedData(ref mut extend_data) => {
-                                        let extend_info = &mut extend_data.extend_info;
-                                        extend_info.timestamp_0 = test_timestamp;
-                                        Arc::new(msg)
-                                    },
-                                    _ =>unreachable!(),
-                                };*/
-            //let msg_arc = Arc::new(msg);
             self.send(msg_arc)?;
         }
         Ok(())

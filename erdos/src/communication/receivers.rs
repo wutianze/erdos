@@ -27,18 +27,18 @@ use futures_delay_queue::Receiver;
 use super::{Stage, communication_deadline::CommunicationDeadline};
 
 pub struct ServerTimeInfo{
-    start_time_of_handled_msg: u128,
+    timestamp_0: u128,
     timestamp_1: u128,
     timestamp_2: u128,
 }
 
 impl ServerTimeInfo{
     pub fn new(
-        start_time_of_handled_msg: u128,
+        timestamp_0: u128,
         timestamp_1: u128,
         timestamp_2: u128,
     ) -> Self{
-        Self{start_time_of_handled_msg,timestamp_1,timestamp_2}
+        Self{timestamp_0,timestamp_1,timestamp_2}
     }
 }
 
@@ -141,16 +141,17 @@ impl DataReceiver {
         loop{
             tokio::select! {
                 Some(communication_deadline) = deadline_queue_rx.receive() =>{// stage 1 should never run this
+                    let piece_info = server_info.entry(communication_deadline.stream_id).or_insert(ServerTimeInfo::new(communication_deadline.start_timestamp,0,0));// 0 means not received
                     //should only happen in Stage::ResponseReceived, every msg will cause this
-                    continue;
-                    /* 
-                    if communication_deadline.start_timestamp > start_time_of_handled_msg{// the response of this deadline is received
+                    
+                    if communication_deadline.start_timestamp > piece_info.timestamp_0{// the response of this deadline is received
                         continue;
                     }else{
                         tracing::warn!("deadline alarmed for stream:{} began at time:{}",communication_deadline.stream_id,communication_deadline.start_timestamp);
                         start_time_of_handled_msg = communication_deadline.start_timestamp;
                         //run the handler
                     }*/
+                    continue;
                 },
                 Some(msg) = mrx.recv() =>{
                     while let Some(Some((stream_id, pusher))) = rx.recv().now_or_never() {
@@ -161,30 +162,28 @@ impl DataReceiver {
                         InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
                     };
                     
-                    tracing::info!("receive msg metadata:{},",metadata.stream_id);
+                    //tracing::info!("receive msg metadata:{},",metadata.stream_id);
 
                     let piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.timestamp_0,metadata.timestamp_1, metadata.timestamp_2));
                     match metadata.stage{
-                        Stage::RequestReceived =>{
-                            piece_info.timestamp_1 = 0;
-                            //metadata.timestamp_1 = 0;//tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
+                        Stage::Request =>{
+                            metadata.timestamp_1 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
                         },
-                        Stage::ResponseReceived =>{
-                            piece_info.timestamp_1 = 0;
-                            //metadata.timestamp_3 = 0;//tokio::time::Instant::now().duration_since(std::time::UNIX_EPOCH).as_millis();
+                        Stage::Response =>{
+                            metadata.timestamp_3 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
                         },
-                        _ =>{
-                            panic!("DataReceiver received msg with wrong Stage");
-                        }
+                        Stage::IGNORE =>{
+                            //TODO? should panic?panic!("DataReceiver received msg with wrong Stage");
+                        },
                     }
-                    if metadata.timestamp_0 < piece_info.start_time_of_handled_msg{
+                    if metadata.timestamp_0 < piece_info.timestamp_0{
                         //todo: do sth to update the server_info
                         continue;//out of date msg
                     }
 
                     //new msg
                     //if metadata.device == 0{//we get main msg first, use it directly
-                        piece_info.start_time_of_handled_msg = metadata.timestamp_0;
+                        piece_info.timestamp_0 = metadata.timestamp_0;
                         piece_info.timestamp_1 = (metadata.timestamp_1 + piece_info.timestamp_1)/2;
                         piece_info.timestamp_2 = (metadata.timestamp_2 + piece_info.timestamp_2)/2;
                         match stream_id_to_pusher.get_mut(&metadata.stream_id) {

@@ -27,7 +27,7 @@ impl Source<usize> for SourceOperator {
         for t in 0..3 {
             let timestamp = Timestamp::Time(vec![t as u64]);
             write_stream
-                .send(Message::new_extendmessage(timestamp.clone(), MessageMetadata::app_default(erdos::communication::Stage::RequestSend, 0, 100), t))
+                .send(Message::new_extendmessage(timestamp.clone(), MessageMetadata::app_default(erdos::communication::Stage::Request, 0, 100), t))
                 .unwrap();
             write_stream
                 .send(Message::new_watermark(timestamp))
@@ -53,7 +53,7 @@ impl Sink<TimeVersionedState<usize>, usize> for SinkOperator {
     fn on_extenddata(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, metadata:&MessageMetadata,data: &usize) {
         let timestamp = ctx.timestamp().clone();
         tracing::info!(
-            "{} @ {:?}: Received on_extenddata {}, extend_info {}",
+            "{} @ {:?}: Received on_extenddata {}, metadata {}",
             ctx.operator_config().get_name(),
             timestamp,
             data,

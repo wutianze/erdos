@@ -1,6 +1,6 @@
 use futures::{future, stream::SplitSink};
 use futures_util::sink::SinkExt;
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::{Duration,SystemTime,UNIX_EPOCH}};
 use tokio::{
     self,
     net::TcpStream,
@@ -80,10 +80,9 @@ impl DataSender {
                         InterProcessMessage::Serialized {metadata:_,bytes:_ } => unreachable!(),
                         InterProcessMessage::Deserialized { ref mut metadata, data:_ } => {
                             match metadata.stage{// stage is given by the application
-                                Stage::RequestSend | Stage::IGNORE=>{
-                                    metadata.timestamp_0 = 0;//tokio::time::Instant::now().duration_since(time::UNIX_EPOCH).as_millis();
-                                    self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(100));//u64(metadata.expected_deadline.clone()));
-                                    metadata.stage = Stage::RequestReceived;
+                                Stage::Request =>{
+                                    metadata.timestamp_0 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+                                    self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(metadata.expected_deadline));
                                     if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
                                         return Err(e);
                                     }//this msg is device0
@@ -91,9 +90,26 @@ impl DataSender {
                                         return Err(e);
                                     }
                                 },
+                                Stage::Response =>{
+                                    metadata.timestamp_2 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+                                    if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
+                                        return Err(e);
+                                    }//this msg is device0
+                                    if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
+                                        return Err(e);
+                                    }
+                                }
+                                Stage::IGNORE =>{
+                                    if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
+                                        return Err(e);
+                                    }//this msg is device0
+                                    if let Err(e) = self.sink1.send(msg).await.map_err(CommunicationError::from) {
+                                        return Err(e);
+                                    }
+                                }
                                 _ =>{
                                     println!("wrong Stage code in msg");
-                                    //unreachable!();
+                                    unreachable!();
                                 }
                             }
                             //may need to use join if sink.send doesnt return instantly,TODO

@@ -352,10 +352,16 @@ where
                 let mut mutable_operator = operator.lock().unwrap();
                 let mut mutable_state = state.lock().unwrap();
 
+                mutable_operator.on_extenddata(
+                    &mut OneInOneOutContext::new(time, config, &mut mutable_state, write_stream),
+                    msg.metadata().unwrap(),
+                    msg.data().unwrap(),
+                )
+                /*
                 mutable_operator.on_data(
                     &mut OneInOneOutContext::new(time, config, &mut mutable_state, write_stream),
                     msg.data().unwrap(),
-                )
+                )*/
             },
             OperatorType::Sequential,
         )

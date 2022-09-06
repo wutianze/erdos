@@ -153,6 +153,8 @@ where
 
     fn on_data(&mut self, ctx: &mut OneInOneOutContext<S, U>, data: &T);
 
+    fn on_extenddata(&mut self, ctx: &mut SinkContext<S>, metadata: &MessageMetadata, data: &T);
+
     fn on_watermark(&mut self, ctx: &mut OneInOneOutContext<S, U>);
 }
 

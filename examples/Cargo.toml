@@ -37,3 +37,7 @@ path = "linq.rs"
 [[example]]
 name = "node0"
 path = "node0.rs"
+
+[[example]]
+name = "rtt_test"
+path = "rtt_test.rs"

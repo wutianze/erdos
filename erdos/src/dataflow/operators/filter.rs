@@ -69,6 +69,8 @@ where
         }
     }
 
+    fn on_extenddata(&mut self, ctx: &mut crate::dataflow::context::OneInOneOutContext<(),D>, metadata: &crate::communication::MessageMetadata, data: &D) {}
+
     fn on_watermark(&mut self, _ctx: &mut OneInOneOutContext<(), D>) {}
 }
 

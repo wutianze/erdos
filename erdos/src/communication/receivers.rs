@@ -141,7 +141,7 @@ impl DataReceiver {
         loop{
             tokio::select! {
                 Some(communication_deadline) = deadline_queue_rx.receive() =>{// stage 1 should never run this
-                    let piece_info = server_info.entry(communication_deadline.stream_id).or_insert(ServerTimeInfo::new(communication_deadline.start_timestamp,0,0));// 0 means not received
+                    let mut piece_info = server_info.entry(communication_deadline.stream_id).or_insert(ServerTimeInfo::new(communication_deadline.start_timestamp,0,0));// 0 means not received
                     //should only happen in Stage::ResponseReceived, every msg will cause this
                     
                     if communication_deadline.start_timestamp > piece_info.start_time{// the response of this deadline is received
@@ -162,9 +162,9 @@ impl DataReceiver {
                         InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
                     };
                     
-                    //tracing::info!("receive msg metadata:{},",metadata.stream_id);
+                    tracing::info!("receive msg metadata:{},time0:{},time1:{},time2:{},time3:{}",metadata.stream_id,metadata.timestamp_0,metadata.timestamp_1,metadata.timestamp_2,metadata.timestamp_3);
 
-                    let piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.timestamp_0,metadata.timestamp_1-metadata.timestamp_0, metadata.timestamp_3-metadata.timestamp_2));
+                    let mut piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.timestamp_0,metadata.timestamp_1-metadata.timestamp_0, metadata.timestamp_3-metadata.timestamp_2));
                     match metadata.stage{
                         Stage::Request =>{
                             metadata.timestamp_1 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();

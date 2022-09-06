@@ -2,8 +2,8 @@ use std::{thread, time::Duration};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use erdos::{
     dataflow::{
-        context::SinkContext,
-        operator::{Sink, Source},
+        context::{SinkContext,OneInOneOutContext},
+        operator::{Sink, Source,OneInOneOut},
         //operators::{Filter, Join, Map, Split},
         state::TimeVersionedState,
         stream::{WriteStream, WriteStreamT},
@@ -51,11 +51,15 @@ impl MiddleOperator {
 
 impl OneInOneOut<(), usize, usize> for MiddleOperator {
 
+	fn on_data(&mut self, ctx: &mut OneInOneOutContext<(), usize>, data: &usize) {
+	    
+	}
+
     fn on_extenddata(&mut self, ctx: &mut OneInOneOutContext<(), usize>, metadata:&MessageMetadata, data: &usize) {
         tracing::info!("MiddleOperator @ {:?}: received {}", ctx.timestamp(), data);
         let timestamp = ctx.timestamp().clone();
         ctx.write_stream()
-            .send(Message::new_extendmessage(timestamp, metadata, data * data))
+            .send(Message::new_extendmessage(timestamp, *metadata, data * data))
             .unwrap();
         tracing::info!(
             "MiddleOperator @ {:?}: sent {}",
@@ -126,7 +130,7 @@ fn main() {
     let source_stream = erdos::connect_source(SourceOperator::new, source_config);
 
     let middle_config = OperatorConfig::new().name("MiddleOperator").node(1);
-    let middle_stream = erdos::connect_one_in_one_out(MiddleOperator::new, || {}, square_config, &source_stream);
+    let middle_stream = erdos::connect_one_in_one_out(MiddleOperator::new, || {}, middle_config, &source_stream);
     let odds_sink_config = OperatorConfig::new().name("OddsSinkOperator").node(0);
     erdos::connect_sink(
         SinkOperator::new,

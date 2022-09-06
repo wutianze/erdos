@@ -213,7 +213,8 @@ impl<'a, D: Data + Deserialize<'a>> WriteStreamT<D> for WriteStream<D> {
         match msg{
             Message::ExtendTimestampedData(extend_data) => {
                 let metadata = &extend_data.metadata;
-                self.pusher.send_dual(Arc::new(Message::new_message(extend_data.timestamp, extend_data.data)),MessageMetadata::app_default(metadata.stage, metadata.device, metadata.expected_deadline))?;
+                //self.pusher.send_dual(Arc::new(Message::new_message(extend_data.timestamp, extend_data.data)),MessageMetadata::app_default(metadata.stage, metadata.device, metadata.expected_deadline))?;
+                self.pusher.send_dual(Arc::new(Message::new_message(extend_data.timestamp, extend_data.data)),*metadata)?;
             },
             _ => {
                 self.pusher.send(Arc::new(msg)).map_err(SendError::from)?;

@@ -75,14 +75,14 @@ impl DataSender {
         loop {
             match self.rx.recv().await {
                 Some(mut msg) => {
-                    println!("send sth");
+                    //println!("send sth");
                     match msg{
                         InterProcessMessage::Serialized {metadata:_,bytes:_ } => unreachable!(),
                         InterProcessMessage::Deserialized { ref mut metadata, data:_ } => {
                             match metadata.stage{// stage is given by the application
                                 Stage::Request =>{
                                     //metadata.timestamp_0 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-                                    metadata.timestamp_0 = 0;
+                                    //metadata.timestamp_0 = 0;
                                     self.deadline_queue.insert(CommunicationDeadline::new(metadata.stream_id.clone(), metadata.timestamp_0.clone()), Duration::from_millis(metadata.expected_deadline));
                                     if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
                                         return Err(e);
@@ -93,7 +93,7 @@ impl DataSender {
                                 },
                                 Stage::Response =>{
                                     //metadata.timestamp_2 = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-                                    metadata.timestamp_2 = 0;
+                                    //metadata.timestamp_2 = 0;
                                     if let Err(e) = self.sink0.send(msg.clone()).await.map_err(CommunicationError::from) {
                                         return Err(e);
                                     }//this msg is device0

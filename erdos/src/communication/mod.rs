@@ -80,6 +80,9 @@ impl MessageMetadata {
     pub fn app_default(stage: Stage, device: u8, expected_deadline:u64) -> Self{
         Self { stream_id:StreamId::nil(), stage, device, expected_deadline, timestamp_0: 0, timestamp_1:0, timestamp_2: 0, timestamp_3: 0 }
     }
+    pub fn rtt_test(stage: Stage, device: u8, start_time:u128) -> Self{
+        Self { stream_id:StreamId::nil(), stage, device, expected_deadline:0, timestamp_0:start_time, timestamp_1:0, timestamp_2: 0, timestamp_3: 0 }
+    }
     
 }
 

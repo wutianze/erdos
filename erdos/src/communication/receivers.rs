@@ -106,7 +106,7 @@ impl DataReceiver {
 
         let handle0 = async move{
             while let Some(res) = stream0.next().await{
-                    println!("receive from stream0");
+                    //println!("receive from stream0");
             match res {
                 // Push the message to the listening operator executors.
                 Ok(msg) => {
@@ -120,7 +120,7 @@ impl DataReceiver {
     };
         let handle1 = async move{
             while let Some(res) = stream1.next().await{
-                    println!("receive from stream1");
+                    //println!("receive from stream1");
             match res {
                 // Push the message to the listening operator executors.
                 Ok(msg) => {
@@ -162,7 +162,7 @@ impl DataReceiver {
                         InterProcessMessage::Deserialized { metadata:_, data:_, } => unreachable!(),
                     };
                     
-                    tracing::info!("receive msg metadata:{},time0:{},time1:{},time2:{},time3:{}",metadata.stream_id,metadata.timestamp_0,metadata.timestamp_1,metadata.timestamp_2,metadata.timestamp_3);
+                    /*tracing::info!("receive msg metadata:{},time0:{},time1:{},time2:{},time3:{}",metadata.stream_id,metadata.timestamp_0,metadata.timestamp_1,metadata.timestamp_2,metadata.timestamp_3);
 
                     let mut piece_info = server_info.entry(metadata.stream_id).or_insert(ServerTimeInfo::new(metadata.timestamp_0,metadata.timestamp_1-metadata.timestamp_0, metadata.timestamp_3-metadata.timestamp_2));
                     match metadata.stage{
@@ -186,7 +186,7 @@ impl DataReceiver {
                     if metadata.timestamp_0 < piece_info.start_time{
                         //todo: device 0 and device is different
                         continue;//out of date msg
-                    }
+                    }*/
 
                     //new msg
                     

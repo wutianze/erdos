@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+use std::{thread, time::{Duration,SystemTime,UNIX_EPOCH}};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use erdos::{
     dataflow::{
@@ -21,13 +21,19 @@ impl SourceOperator {
     }
 }
 
-impl Source<usize> for SourceOperator {
-    fn run(&mut self, _operator_config: &OperatorConfig, write_stream: &mut WriteStream<usize>) {
+impl Source<String> for SourceOperator {
+    fn run(&mut self, _operator_config: &OperatorConfig, write_stream: &mut WriteStream<String>) {
         tracing::info!("Running Source Operator");
+	let mut to_send = String::new();
+	for i in 0..1024{
+		to_send.push('a');
+	}
+	print!("to_send size:{}",to_send.len());
         for t in 0..3 {
+		let data_copy = to_send.clone();
             let timestamp = Timestamp::Time(vec![t as u64]);
             write_stream
-                .send(Message::new_extendmessage(timestamp.clone(), MessageMetadata::app_default(erdos::communication::Stage::Request, 0, 100), t))
+                .send(Message::new_extendmessage(timestamp.clone(), MessageMetadata::rtt_test(erdos::communication::Stage::Request, 0, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()), data_copy))
                 .unwrap();
             write_stream
                 .send(Message::new_watermark(timestamp))
@@ -49,26 +55,25 @@ impl MiddleOperator {
     }
 }
 
-impl OneInOneOut<(), usize, usize> for MiddleOperator {
+impl OneInOneOut<(), String, String> for MiddleOperator {
 
-	fn on_data(&mut self, ctx: &mut OneInOneOutContext<(), usize>, data: &usize) {
-	    
-	}
+	fn on_data(&mut self, ctx: &mut OneInOneOutContext<(), String>, data: &String) {}
 
-    fn on_extenddata(&mut self, ctx: &mut OneInOneOutContext<(), usize>, metadata:&MessageMetadata, data: &usize) {
-        tracing::info!("MiddleOperator @ {:?}: received {}", ctx.timestamp(), data);
+    fn on_extenddata(&mut self, ctx: &mut OneInOneOutContext<(), String>, metadata:&MessageMetadata, data: &String) {
+        //tracing::info!("MiddleOperator @ {:?}: received {}", ctx.timestamp(), data);
         let timestamp = ctx.timestamp().clone();
         ctx.write_stream()
-            .send(Message::new_extendmessage(timestamp, *metadata, data * data))
+            .send(Message::new_extendmessage(timestamp, *metadata, String::from(data)))
             .unwrap();
+	    /*
         tracing::info!(
             "MiddleOperator @ {:?}: sent {}",
             ctx.timestamp(),
-            data * data
-        );
+            data
+        );*/
     }
 
-    fn on_watermark(&mut self, _ctx: &mut OneInOneOutContext<(), usize>) {}
+    fn on_watermark(&mut self, _ctx: &mut OneInOneOutContext<(), String>) {}
 }
 
 struct SinkOperator {}
@@ -79,22 +84,23 @@ impl SinkOperator {
     }
 }
 
-impl Sink<TimeVersionedState<usize>, usize> for SinkOperator {
-    fn on_extenddata(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, metadata:&MessageMetadata,data: &usize) {
+impl Sink<TimeVersionedState<usize>, String> for SinkOperator {
+    fn on_extenddata(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, metadata:&MessageMetadata,data: &String) {
         let timestamp = ctx.timestamp().clone();
+
         tracing::info!(
-            "{} @ {:?}: Received on_extenddata {}, metadata {}",
+            "{} @ {:?}: Received on_extenddata, start at: {}, cost:{}",
             ctx.operator_config().get_name(),
             timestamp,
-            data,
-            metadata.timestamp_0,
+	    metadata.timestamp_0,
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() - metadata.timestamp_0,
         );
 
         // Increment the message count.
         *ctx.current_state().unwrap() += 1;
     }
 
-    fn on_data(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, data: &usize) {
+    fn on_data(&mut self, ctx: &mut SinkContext<TimeVersionedState<usize>>, data: &String) {
         let timestamp = ctx.timestamp().clone();
         tracing::info!(
             "{} @ {:?}: Received on_data {}",

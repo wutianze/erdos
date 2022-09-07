@@ -92,6 +92,7 @@ impl<D: Data + PartialEq> PartialEq for Message<D> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::TimestampedData(d1), Self::TimestampedData(d2)) => d1 == d2,
+            (Self::ExtendTimestampedData(d1), Self::ExtendTimestampedData(d2)) => d1 == d2,
             (Self::Watermark(w1), Self::Watermark(w2)) => w1 == w2,
             _ => false,
         }
